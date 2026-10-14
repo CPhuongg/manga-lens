@@ -28,14 +28,35 @@ def _cut(boxes, idxs, axis, tol):
     return groups if len(groups) > 1 else None
 
 
-def reading_order(boxes, page_size=None, tol_ratio=0.01, rtl=True):
-    """boxes: list (x1,y1,x2,y2). page_size: (w,h) để đặt dung sai chồng lấn."""
+def _split_spread(boxes, idxs, mid, tol, rtl):
+    """Tách trang đôi tại rãnh giữa: [trang đọc trước, trang đọc sau]; None nếu không sạch.
+
+    Không tách khi có box vắt qua rãnh (panel tràn 2 trang) hoặc một bên rỗng;
+    khi đó XY-cut thường lo (panel tràn thành một hàng riêng).
+    """
+    if any(boxes[i][0] < mid - tol and boxes[i][2] > mid + tol for i in idxs):
+        return None
+    left = [i for i in idxs if (boxes[i][0] + boxes[i][2]) / 2 < mid]
+    right = [i for i in idxs if (boxes[i][0] + boxes[i][2]) / 2 >= mid]
+    if not left or not right:
+        return None
+    return [right, left] if rtl else [left, right]
+
+
+def reading_order(boxes, page_size=None, tol_ratio=0.01, rtl=True, spread=None):
+    """boxes: list (x1,y1,x2,y2). page_size: (w,h) để đặt dung sai chồng lấn.
+
+    spread: ảnh là trang đôi (Manga109 là trang đôi) -> đọc hết trang trước rồi mới sang
+    trang sau. None = tự nhận khi page_size rộng hơn cao.
+    """
     if not boxes:
         return []
     if page_size:
         tol = tol_ratio * max(page_size)
     else:
         tol = tol_ratio * max(max(b[2] for b in boxes), max(b[3] for b in boxes))
+    if spread is None:
+        spread = bool(page_size) and page_size[0] > page_size[1]
 
     def rec(idxs):
         if len(idxs) <= 1:
@@ -51,7 +72,12 @@ def reading_order(boxes, page_size=None, tol_ratio=0.01, rtl=True):
         return sorted(idxs, key=lambda i: ((boxes[i][1] + boxes[i][3]) / 2,
                                            sgn * (boxes[i][0] + boxes[i][2]) / 2))
 
-    return rec(list(range(len(boxes))))
+    idxs = list(range(len(boxes)))
+    if spread and page_size:
+        pages = _split_spread(boxes, idxs, page_size[0] / 2, tol, rtl)
+        if pages:
+            return [j for p in pages for j in rec(p)]
+    return rec(idxs)
 
 
 def _center(b):

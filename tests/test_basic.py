@@ -25,6 +25,22 @@ def test_reading_order_rows():
     assert reading_order([tl, tr, bl, br], (1000, 1300), rtl=False) == [0, 1, 2, 3]
 
 
+def test_reading_order_spread():
+    # Trang đôi 1600x1100 (kiểu Manga109): 2 hàng thẳng hàng giữa hai trang.
+    # Phải đọc hết trang phải (R1,R2) rồi mới sang trang trái (L1,L2), không xen kẽ theo hàng.
+    R1, R2 = (850, 0, 1600, 500), (850, 550, 1600, 1100)
+    L1, L2 = (0, 0, 780, 500), (0, 550, 780, 1100)
+    assert reading_order([L1, R1, L2, R2], (1600, 1100)) == [1, 3, 0, 2]
+    assert reading_order([L1, R1, L2, R2], (1600, 1100), rtl=False) == [0, 2, 1, 3]
+    assert reading_order([L1, R1, L2, R2], (1600, 1100), spread=False) == [1, 0, 3, 2]  # lỗi cũ
+
+
+def test_reading_order_spread_wide_panel():
+    # Panel tràn cả trang đôi: không tách rãnh, nó là một hàng riêng đọc trước
+    W, R, L = (0, 0, 1600, 400), (850, 450, 1600, 1100), (0, 450, 780, 1100)
+    assert reading_order([L, R, W], (1600, 1100)) == [2, 1, 0]
+
+
 def test_order_page_assignment():
     panels = [(0, 0, 480, 600), (520, 0, 1000, 600)]
     texts = [(50, 50, 120, 200), (600, 50, 700, 200), (800, 300, 900, 500)]
