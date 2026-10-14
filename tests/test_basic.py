@@ -1,0 +1,69 @@
+"""Chạy: python tests/test_basic.py   (không cần Manga109 hay GPU)"""
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from convert_manga109 import parse_book, split_titles, to_yolo_line  # noqa: E402
+from src.ocr import cer  # noqa: E402
+from src.reading_order import order_page, reading_order  # noqa: E402
+
+
+def test_reading_order_classic_layout():
+    # Trang 1000x1400: cột phải 1 panel cao (A); cột trái 2 panel xếp dọc (B trên, C dưới)
+    A, B, C = (520, 0, 1000, 1400), (0, 0, 480, 650), (0, 700, 480, 1400)
+    assert reading_order([C, A, B], (1000, 1400)) == [1, 2, 0]  # A, B, C
+
+
+def test_reading_order_rows():
+    # 2 hàng x 2 cột: phải trước trái, hàng trên trước hàng dưới
+    tl, tr, bl, br = (0, 0, 480, 600), (520, 0, 1000, 600), (0, 650, 480, 1300), (520, 650, 1000, 1300)
+    assert reading_order([tl, tr, bl, br], (1000, 1300)) == [1, 0, 3, 2]
+    assert reading_order([tl, tr, bl, br], (1000, 1300), rtl=False) == [0, 1, 2, 3]
+
+
+def test_order_page_assignment():
+    panels = [(0, 0, 480, 600), (520, 0, 1000, 600)]
+    texts = [(50, 50, 120, 200), (600, 50, 700, 200), (800, 300, 900, 500)]
+    res = order_page(panels, texts, (1000, 600))
+    assert [r["panel"] for r in res] == [1, 0]
+    assert res[0]["texts"] == [1, 2]  # text 1 nằm cao hơn nên đọc trước (tách hàng trước)
+    assert res[1]["texts"] == [0]
+
+
+def test_cer():
+    assert cer("こんにちは", "こんにちは") == 0
+    assert abs(cer("こんにちわ", "こんにちは") - 0.2) < 1e-9
+
+
+def test_converter():
+    xml = """<book title="T"><characters/><pages>
+      <page index="0" width="1000" height="1400">
+        <frame id="a" xmin="0" ymin="0" xmax="500" ymax="700"/>
+        <text id="b" xmin="10" ymin="10" xmax="110" ymax="210">あ</text>
+        <face id="c" xmin="1" ymin="1" xmax="1" ymax="1"/>
+      </page></pages></book>"""
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "T.xml"
+        p.write_text(xml, encoding="utf-8")
+        pg = parse_book(p)[0]
+    assert pg["w"] == 1000 and len(pg["boxes"]) == 3
+    assert to_yolo_line("frame", 0, 0, 500, 700, 1000, 1400) == "0 0.250000 0.250000 0.500000 0.500000"
+    assert to_yolo_line("face", 1, 1, 1, 1, 1000, 1400) is None  # box suy biến bị bỏ
+
+
+def test_split_by_title():
+    s = split_titles([f"t{i}" for i in range(109)])
+    allt = s["train"] + s["val"] + s["test"]
+    assert len(allt) == 109 and len(set(allt)) == 109
+    assert len(s["test"]) == 11 and len(s["val"]) == 11
+
+
+if __name__ == "__main__":
+    for n, f in list(globals().items()):
+        if n.startswith("test_"):
+            f()
+            print("ok", n)

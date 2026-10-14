@@ -1,0 +1,5 @@
+ultralytics>=8.3
+manga-ocr
+gradio
+pillow
+numpy
