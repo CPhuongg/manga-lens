@@ -52,6 +52,11 @@ Recall box text 97.2%, FP 125/3028 box dự đoán. "Box dự đoán" thấp hơ
 như toàn bộ do 84 box bị sót (2.8%) -> ~38% lỗi end-to-end đến từ recall detector chứ không phải
 OCR. Cách tính hơi bi quan (detector gộp 2 box sát nhau thì cả hai bị tính sót, IoU<0.5).
 
+Thử hạ conf 0.25 -> 0.15: ghép thêm 13 box GT (recall 97.2% -> 97.6%), e2e CER 0.055 -> 0.051,
+nhưng FP 125 -> 179 (+43%; e2e CER KHÔNG tính FP, FP thật sẽ đẩy chữ rác vào kết quả) -> ~4 FP
+cho mỗi box thu về, KHÔNG đáng; giữ conf 0.25. 71 box vẫn sót ở conf thấp -> nghi do lệch/gộp
+box (IoU<0.5) chứ không do conf; việc cần làm: xem box GT bị sót có pred nào IoU 0.1-0.5 không.
+
 Lỗi thật còn lại (40 box tệ nhất, `--worst 40`):
 - Chữ dài trên box rất hẹp và dài (Raphael: chú thích 30x945, 52x1028; MiraiSan/097): CER 0.8-0.9,
   có thể chiếm phần lớn ký tự sai (chưa tính chính xác) -> thử cắt box dài thành đoạn ~vuông.
