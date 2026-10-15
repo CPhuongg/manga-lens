@@ -4,7 +4,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from .ocr import crop, ocr_japanese
-from .reading_order import order_page
+from .reading_order import order_page, reading_order
 
 NAMES = {0: "frame", 1: "text", 2: "face", 3: "body"}
 COLORS = {"frame": "#e63946", "text": "#1d7af3", "face": "#2a9d8f", "body": "#f4a261"}
@@ -27,13 +27,18 @@ class MangaPipeline:
             dets[NAMES[int(c)]].append({"box": xyxy, "score": s})
         return dets
 
-    def run(self, image_path_or_pil, rtl=True):
+    def run(self, image_path_or_pil, rtl=True, order="panel"):
+        """order: "panel" = sắp panel rồi thoại trong panel (mặc định, tốt trên Manga109);
+        "direct" = XY-cut thẳng trên các box text, bỏ qua panel (thử khi panel bị phát hiện chồng lấn)."""
         img = (image_path_or_pil if isinstance(image_path_or_pil, Image.Image)
                else Image.open(image_path_or_pil)).convert("RGB")
         dets = self.detect(img)
         panels = [d["box"] for d in dets["frame"]]
         texts = [d["box"] for d in dets["text"]]
-        layout = order_page(panels, texts, img.size, rtl=rtl)
+        if order == "direct":
+            layout = [{"panel": None, "texts": reading_order(texts, img.size, rtl=rtl)}] if texts else []
+        else:
+            layout = order_page(panels, texts, img.size, rtl=rtl)
 
         reading, k = [], 1
         for pi, item in enumerate(layout):

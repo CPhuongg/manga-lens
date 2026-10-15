@@ -39,6 +39,9 @@ ap.add_argument("--out", type=Path, default=None, help="mặc định out/<tên>
 ap.add_argument("--pad", type=int, default=8, help="đệm quanh mỗi ô (px); ô model bó sát chữ, bạn khoanh cả ô thoại")
 ap.add_argument("--ltr", action="store_true", help="đọc trái->phải (mặc định phải->trái)")
 ap.add_argument("--no-ocr", action="store_true", help="không điền chữ Nhật, chỉ khoanh ô")
+ap.add_argument("--order", choices=["panel", "direct"], default="panel",
+                help="panel (mặc định): sắp panel rồi thoại; direct: sắp thẳng trên box chữ, bỏ qua panel "
+                     "(thử khi panel bị phát hiện chồng lấn nên thứ tự sai)")
 ap.add_argument("--conf", type=float, default=0.25)
 ap.add_argument("--imgsz", type=int, default=1024)
 ap.add_argument("--device", default=None)
@@ -92,7 +95,7 @@ for i, f in enumerate(files, 1):
         pages.append({"id": uid("pg"), "fileName": f.name, "relPath": f"{a.folder.name}/{f.name}",
                       "w": 0, "h": 0, "boxes": []})
         continue
-    res = pipe.run(img, rtl=not a.ltr)
+    res = pipe.run(img, rtl=not a.ltr, order=a.order)
     W, H = img.size
     boxes = []
     for p in res["reading"]:
