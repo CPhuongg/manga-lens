@@ -123,16 +123,25 @@ def assign_texts_to_panels(panels, texts):
     return out
 
 
-def order_page(panels, texts, page_size=None, rtl=True):
+PANEL_TOL = 0.05  # dung sai riêng cho panel (xem order_page)
+
+
+def order_page(panels, texts, page_size=None, rtl=True, panel_tol=PANEL_TOL):
     """Trả về list các panel theo thứ tự đọc, mỗi panel kèm chỉ số text theo thứ tự đọc.
 
     [{'panel': idx, 'texts': [idx, ...]}, ...]; text không thuộc panel nào (khi
     không có panel) được gom vào một mục panel=None.
+
+    panel_tol: dung sai XY-cut (tỉ lệ cạnh dài của trang) CHỈ cho việc sắp panel. Viền panel
+    thật hay chồng/lệch nhau 30-60 px (2-4% bề rộng trang đôi) nên 1% (mặc định của
+    reading_order) làm XY-cut không cắt được và rơi về sắp theo tâm y -> sai. 0.05 chọn trên 30
+    trang nhãn thoại (đúng hoàn toàn 20/30 -> 28/30) và kiểm lại độc lập trên 16 trang nhãn
+    panel (14/16 -> 15-16/16). Thứ tự thoại TRONG panel vẫn dùng dung sai mặc định.
     """
     if not panels:
         order = reading_order(texts, page_size, rtl=rtl)
         return [{"panel": None, "texts": order}] if texts else []
-    p_order = reading_order(panels, page_size, rtl=rtl)
+    p_order = reading_order(panels, page_size, rtl=rtl, tol_ratio=panel_tol)
     owner = assign_texts_to_panels(panels, texts)
     result = []
     for p in p_order:

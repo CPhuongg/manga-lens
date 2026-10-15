@@ -40,7 +40,7 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
   trước), panel phải->trái theo hàng, thoại phải->trái trong panel. Mới kiểm tra 1 trang bằng mắt,
   CHƯA đo định lượng (Kendall tau) -> xem việc 4. Tiêu đề trên đầu trang (パニック×2, 逆効果) được gán
   vào panel gần nhất như thoại đầu tiên (chưa tách loại).
-- CHƯA làm: đo reading order (Kendall tau), mask SAM, README, bảng so sánh model.
+- CHƯA làm: đo reading order với panel DỰ ĐOÁN, mask SAM, README, bảng so sánh model.
 
 ### Kết quả OCR (manga-ocr, 200 trang test ngẫu nhiên, seed 0, 2987 text box GT)
 `normalize()` mặc định bỏ khác biệt chỉ do dấu câu (NFKC, gộp dãy `…・･．.`, `〜`->`~`); manga-ocr
@@ -86,6 +86,26 @@ Lỗi thật còn lại (40 box tệ nhất, `--worst 40`):
 - Chữ viết tay/cách điệu/SFX (Hamlet, Akuhamu, LoveHina), nhiều dòng/cột & chữ lặp (`ポジティブー`).
 - Nghi nhãn GT nhiễu (`性病`->`はぁ`, `鳥コも茄子・・・？`), kéo dài âm (`きーっ` vs `きーーーっ`).
 Ảnh crop `ocr_worst/` chỉ xem local, KHÔNG đưa lên repo/README (bản quyền).
+
+### Kết quả reading order (box GT, trang đôi đọc PHẢI trước; nhãn tự gán bằng `scripts/label_order.py`)
+Thứ tự THOẠI, 30 trang test (chuẩn đo chính), `scripts/eval_order.py --mode text`:
+| Cách | Tau mean | Đúng hoàn toàn |
+|---|---|---|
+| **qua panel, `panel_tol=0.05` (pipeline)** | **0.986** | **28/30 (93.3%)** |
+| qua panel, dung sai cũ 0.01 | 0.882 | 20/30 (66.7%) |
+| XY-cut thẳng trên text (không panel) | 0.940 | 18/30 (60%) |
+| thẳng, tắt tách trang đôi | 0.606 | 1/30 |
+| baseline (y rồi phải->trái) | 0.410 | 0/30 |
+Nguyên nhân lỗi cũ: viền panel thật hay chồng/lệch nhau 30-60 px (2-4% bề rộng trang đôi) > dung sai 1%
+của XY-cut -> không cắt được -> rơi về sắp theo tâm y -> đọc panel trái trước phải (vd SeisinkiVulnus/026).
+`order_page(..., panel_tol=0.05)` dùng dung sai riêng cho panel; dung sai text (trong panel) gần như không
+ảnh hưởng. Panel: 16 trang nhãn độc lập cũng tăng 14/16 -> 15/16 (tau 0.994). LƯU Ý: 0.05 chọn trên chính
+30 trang này (in-sample); leave-one-title-out 28/30 vs 20/30 -> không giống overfit, nhưng mẫu nhỏ.
+Còn sai: WarewareHaOniDearu/090 (layout lệch hàng, nhãn đọc theo cột; tau 0.60) -> layout nhập nhằng.
+CHƯA đo với panel do detector dự đoán (mới dùng panel GT) -> việc tiếp theo.
+Nhãn panel (`data/reading_order_labels.json`, 16 trang) ban đầu gán TRANG TRÁI TRƯỚC (ngược quy ước,
+tau ~ 0 với thuật toán); đã hoán đổi hai nửa bằng mã, bản gốc ở `data/reading_order_labels.leftfirst.bak.json`.
+Gán nhãn mới luôn đọc hết TRANG PHẢI rồi mới sang trang trái.
 
 ### Kết quả detector (yolo11s, tập TEST 1220 ảnh, imgsz 1024)
 | Lớp | mAP50 | mAP50-95 |

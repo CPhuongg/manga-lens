@@ -59,14 +59,19 @@ def by(fn_b):
 
 methods = {}
 if a.mode == "text":
-    methods["qua panel (pipeline hiện tại)"] = lambda v: [
-        t for item in order_page(v.get("frames", []), v["boxes"], tuple(v["size"]), rtl=True)
-        for t in item["texts"]]
+    def via_panels(**kw):
+        return lambda v: [t for item in order_page(v.get("frames", []), v["boxes"], tuple(v["size"]),
+                                                   rtl=True, **kw) for t in item["texts"]]
+
+    methods["qua panel (pipeline, panel_tol=0.05)"] = via_panels()
+    methods["qua panel (dung sai cũ 0.01)"] = via_panels(panel_tol=0.01)
     methods["thẳng trên box text (không panel)"] = by(lambda b, s: reading_order(b, s, rtl=True))
     methods["thẳng, tắt tách trang đôi"] = by(lambda b, s: reading_order(b, s, rtl=True, spread=False))
 else:
-    methods["reading_order (XY-cut + trang đôi)"] = by(lambda b, s: reading_order(b, s, rtl=True))
-    methods["reading_order (tắt tách trang đôi)"] = by(lambda b, s: reading_order(b, s, rtl=True, spread=False))
+    methods["XY-cut panel, tol 0.05 (pipeline)"] = by(lambda b, s: reading_order(b, s, rtl=True, tol_ratio=0.05))
+    methods["XY-cut panel, tol 0.01 (cũ)"] = by(lambda b, s: reading_order(b, s, rtl=True))
+    methods["tol 0.05, tắt tách trang đôi"] = by(
+        lambda b, s: reading_order(b, s, rtl=True, tol_ratio=0.05, spread=False))
 methods["baseline (y rồi phải->trái)"] = by(naive)
 
 results = {name: evaluate(fn) for name, fn in methods.items()}

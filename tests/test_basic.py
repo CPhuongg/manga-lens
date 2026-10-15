@@ -50,6 +50,16 @@ def test_order_page_assignment():
     assert res[1]["texts"] == [0]
 
 
+def test_order_page_overlapping_panels():
+    # Hình học thật (SeisinkiVulnus/026, trang đôi 1654x1170): panel 0 và 1 chồng nhau 56 px (3.4%).
+    # Dung sai 1% làm XY-cut không cắt được -> rơi về sắp theo tâm y và đọc panel TRÁI (1) trước phải (0).
+    F = [(1234, 2, 1565, 512), (887, 1, 1290, 507), (0, 2, 762, 1169), (899, 526, 1567, 1165)]
+    T = [(1250, 20, 1300, 100), (950, 20, 1000, 100), (100, 50, 200, 150), (1000, 700, 1100, 800)]
+    assert reading_order(F, (1654, 1170), tol_ratio=0.01)[:2] == [1, 0]  # lỗi cũ (dung sai 1%)
+    assert [r["panel"] for r in order_page(F, T, (1654, 1170))] == [0, 1, 3, 2]  # panel_tol mặc định
+    assert [r["panel"] for r in order_page(F, T, (1654, 1170), panel_tol=0.01)][:2] == [1, 0]
+
+
 def test_cer():
     assert cer("こんにちは", "こんにちは") == 0
     assert abs(cer("こんにちわ", "こんにちは") - 0.2) < 1e-9
