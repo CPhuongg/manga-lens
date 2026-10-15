@@ -225,6 +225,7 @@ def main():
     keys = list(groups)
     w = np.array([np.sqrt(len(groups[k])) for k in keys]); w /= w.sum()
     n_samples = sum(len(v) for v in groups.values())
+    args.P = min(args.P, len(keys))  # smoke với ít bộ có thể ít nhân vật hơn P
     iters = args.iters or max(1, n_samples // (args.P * args.K))
     print(f"train: {len(keys)} nhân vật, {n_samples} crop, {iters} bước/epoch", flush=True)
 
@@ -232,7 +233,7 @@ def main():
               {"params": model.head.parameters(), "lr": args.lr_head}]
     opt = torch.optim.AdamW(params, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=[args.lr_bb, args.lr_head],
-                                                total_steps=args.epochs * iters, pct_start=0.1)
+                                                total_steps=max(args.epochs * iters, 20), pct_start=0.1)  # >=20: OneCycle chia 0 nếu quá ít bước (smoke)
     scaler = torch.amp.GradScaler(enabled=dev == "cuda")
     va_arr, va_meta = data["val"]
 
