@@ -31,17 +31,25 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
 - CHƯA chạy thật: pipeline, app. Lỗi đầu tiên khi chạy thật nhiều khả năng nằm ở đây,
   sửa là việc bình thường.
 
-### Kết quả OCR (manga-ocr, 200 trang test ngẫu nhiên, CER trung bình THEO BOX)
-| Nhóm | Số box | CER mean | Median | Đúng hoàn toàn |
+### Kết quả OCR (manga-ocr, 200 trang test ngẫu nhiên, seed 0, 2987 text box GT)
+`normalize()` mặc định bỏ khác biệt chỉ do dấu câu (NFKC, gộp dãy `…・･．.`, `〜`->`~`); manga-ocr
+luôn trả ký tự toàn chiều rộng còn GT hay dùng `…`/`・`. Cờ `--strict` = so từng ký tự (cách cũ).
+| Cách so | CER mean theo box | Median | CER theo tổng ký tự | Đúng hoàn toàn |
 |---|---|---|---|---|
-| GT box (giới hạn trên của OCR) | 2987 | 0.156 | 0.000 | 58.0% |
-| Box dự đoán (ghép được với GT, IoU>=0.5) | 2903 | 0.152 | 0.000 | 57.8% |
-| End-to-end (GT bị bỏ sót tính CER 1.0) | 2987 | 0.176 | 0.000 | 56.1% |
+| Chuẩn hóa dấu câu (mặc định) | **0.034** | 0.000 | **0.039** (37590 ký tự) | **84.3%** |
+| `--strict` (cũ) | 0.156 | 0.000 | 0.130 | 58.0% |
+=> ~4x "lỗi" trước đó chỉ là khác cách viết dấu câu. CHƯA chạy lại box dự đoán / end-to-end với
+chuẩn hóa mới (số cũ theo --strict: dự đoán 0.152, end-to-end 0.176, recall box text 97.2% ở
+conf 0.25, FP 125/3028) -> chạy lại `eval_ocr.py --weights ...`. Detector không phải nút cổ chai.
 
-Recall box text 97.2% (conf>=0.25), FP 125/3028 box dự đoán. Detector không phải nút cổ chai;
-OCR là: ~42% box không đúng hoàn toàn, mean >> median nên lỗi tập trung ở một nhóm box nhỏ
-(nghi: chữ dọc nhiều cột, furigana, SFX cách điệu, box rất ngắn). CER theo box coi box 1 ký tự
-nặng bằng box dài -> cần báo thêm CER theo tổng ký tự; chưa phân loại lỗi.
+Lỗi thật còn lại (40 box tệ nhất, `--worst 40`):
+- Chữ dài trên box rất hẹp và dài (Raphael: chú thích 30x945, 52x1028; MiraiSan/097): CER 0.8-0.9,
+  có thể chiếm phần lớn ký tự sai (chưa tính chính xác) -> thử cắt box dài thành đoạn ~vuông.
+- Ảo giác trên box gần như chỉ có dấu chấm (ToutaMairimasu/091,092; CER tới 6.0 vì GT chỉ 1 ký tự
+  sau chuẩn hóa) -> thử lọc box rất nhỏ / ít mực.
+- Chữ viết tay/cách điệu/SFX (Hamlet, Akuhamu, LoveHina), nhiều dòng/cột & chữ lặp (`ポジティブー`).
+- Nghi nhãn GT nhiễu (`性病`->`はぁ`, `鳥コも茄子・・・？`), kéo dài âm (`きーっ` vs `きーーーっ`).
+Ảnh crop `ocr_worst/` chỉ xem local, KHÔNG đưa lên repo/README (bản quyền).
 
 ### Kết quả detector (yolo11s, tập TEST 1220 ảnh, imgsz 1024)
 | Lớp | mAP50 | mAP50-95 |
