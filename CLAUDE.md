@@ -9,9 +9,12 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
 - `scripts/train.py`, `scripts/eval_det.py` — train/eval Ultralytics (mAP theo lớp)
 - `scripts/eval_ocr.py` — CER của manga-ocr trên text box GT
 - `scripts/viz_gt.py` — vẽ GT + số thứ tự trong XML
-- `scripts/label_order.py` — công cụ gán nhãn thứ tự đọc (Gradio, bấm panel theo thứ tự đọc; box
-  `frame` GT, nguyên trang đôi; mẫu 50 trang test, seed 0, tiếp tục được). Nhãn -> `data/reading_order_labels.json`
-- `scripts/eval_order.py` — Kendall tau + % trang đúng của `reading_order()` trên nhãn đó, so baseline
+- `scripts/label_order.py` — công cụ gán nhãn thứ tự đọc (Gradio, bấm box theo thứ tự đọc; nguyên trang
+  đôi; tiếp tục được). `--mode text` (mặc định, 30 trang): thứ tự THOẠI trên box `text` GT = chuẩn đo chính
+  -> `data/reading_order_text_labels.json`. `--mode panel` (50 trang): thứ tự panel, chỉ để chẩn đoán
+  -> `data/reading_order_labels.json`. Mẫu lấy từ tập test, seed 0.
+- `scripts/eval_order.py --mode text|panel` — Kendall tau + % trang đúng. Chế độ text so: qua panel
+  (pipeline hiện tại) / XY-cut thẳng trên text (không panel) / baseline -> trả lời "có cần panel để sắp thoại".
 - `src/reading_order.py` — XY-cut đệ quy RTL + gán text vào panel (+ `kendall_tau`)
 - `src/ocr.py`, `src/pipeline.py`, `app.py` — OCR, pipeline end-to-end, demo Gradio
 - `tests/test_basic.py` — chạy `python tests/test_basic.py` (không cần dữ liệu), hiện 9/9 pass

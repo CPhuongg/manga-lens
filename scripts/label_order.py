@@ -1,14 +1,17 @@
-"""Công cụ gán nhãn thứ tự đọc panel (Gradio). Bấm vào các panel THEO THỨ TỰ ĐỌC.
+"""Công cụ gán nhãn thứ tự đọc (Gradio). Bấm vào các box THEO THỨ TỰ ĐỌC.
 
+    # thứ tự THOẠI (chuẩn đo chính của sản phẩm; mặc định)
     python scripts/label_order.py --root "D:/MINI APP/dataset/Manga109_released_2026_05_21"
+    # thứ tự PANEL (chỉ để chẩn đoán: lỗi do sắp panel hay sắp thoại)
+    python scripts/label_order.py --root ... --mode panel
 
-- Đơn vị: các box `frame` thật (XML Manga109) -> đo riêng thuật toán reading_order.
+- Đơn vị: box GT trong XML Manga109 (`text` hoặc `frame`) -> đo riêng thuật toán sắp thứ tự.
 - Ảnh là TRANG ĐÔI: gán thứ tự cho cả ảnh (đọc hết trang phải rồi sang trang trái).
-- Mẫu: --n trang có >=2 frame, ngẫu nhiên (seed cố định) từ các bộ truyện trong --titles
+- Mẫu: --n trang có >=2 box, ngẫu nhiên (seed cố định) từ các bộ truyện trong --titles
   (mặc định tập test). Chạy lại sẽ tiếp tục từ trang chưa gán.
 - Không hiển thị gợi ý của thuật toán để tránh làm lệch nhãn.
-- Nhãn lưu ở data/reading_order_labels.json (data/ nằm trong .gitignore: chỉ có tọa độ, nhưng
-  nguồn là Manga109 nên không commit).  Đo bằng: python scripts/eval_order.py
+- Nhãn lưu ở data/reading_order_{text_,}labels.json (data/ nằm trong .gitignore: chỉ có tọa độ,
+  nhưng nguồn là Manga109 nên không commit).  Đo bằng: python scripts/eval_order.py --mode ...
 """
 import argparse
 import json
@@ -24,35 +27,49 @@ from convert_manga109 import parse_book  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--root", required=True, type=Path)
+ap.add_argument("--mode", choices=["text", "panel"], default="text")
 ap.add_argument("--titles", type=Path, default=Path("data/yolo/test_titles.txt"))
-ap.add_argument("--n", type=int, default=50)
+ap.add_argument("--n", type=int, default=None, help="số trang (mặc định 30 cho text, 50 cho panel)")
 ap.add_argument("--seed", type=int, default=0)
-ap.add_argument("--out", type=Path, default=Path("data/reading_order_labels.json"))
+ap.add_argument("--out", type=Path, default=None)
 ap.add_argument("--port", type=int, default=7861)
 args = ap.parse_args()
 
+KIND = "text" if args.mode == "text" else "frame"
+N = args.n or (30 if args.mode == "text" else 50)
+OUT = args.out or Path("data/reading_order_text_labels.json" if args.mode == "text"
+                       else "data/reading_order_labels.json")
+PAD = 6 if args.mode == "text" else 0  # dung sai khi bấm: box chữ nhỏ/hẹp
+
 
 def build_sample():
+    """(title, page, w, h, items, ctx): items = box cần sắp thứ tự, ctx = các frame (chỉ để vẽ/đo)."""
     pages = []
     for t in args.titles.read_text().split():
         for pg in parse_book(args.root / "annotations" / f"{t}.xml"):
-            frames = [b[1:5] for b in pg["boxes"] if b[0] == "frame"]
-            if len(frames) >= 2:
-                pages.append((t, pg["index"], pg["w"], pg["h"], frames))
+            items = [b[1:5] for b in pg["boxes"] if b[0] == KIND]
+            ctx = [b[1:5] for b in pg["boxes"] if b[0] == "frame"] if KIND == "text" else []
+            if len(items) >= 2:
+                pages.append((t, pg["index"], pg["w"], pg["h"], items, ctx))
     random.Random(args.seed).shuffle(pages)
-    return pages[:args.n]
+    return pages[:N]
 
 
 SAMPLE = build_sample()
 KEYS = [f"{t}/{i:03d}" for t, i, *_ in SAMPLE]
-LABELS = json.loads(args.out.read_text(encoding="utf-8")) if args.out.exists() else {}
-FONT = ImageFont.load_default(size=44)
-SMALL = ImageFont.load_default(size=22)
+LABELS = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else {}
+_FONTS = {}
+
+
+def font(size):
+    if size not in _FONTS:
+        _FONTS[size] = ImageFont.load_default(size=size)
+    return _FONTS[size]
 
 
 def save():
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(LABELS, ensure_ascii=False, indent=1), encoding="utf-8")
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps(LABELS, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def next_idx(start=0):
@@ -63,26 +80,29 @@ def next_idx(start=0):
 
 
 def render(k, picked):
-    t, i, w, h, frames = SAMPLE[k]
+    t, i, w, h, items, ctx = SAMPLE[k]
     img = Image.open(args.root / "images" / t / f"{i:03d}.jpg").convert("RGB")
     d = ImageDraw.Draw(img, "RGBA")
-    for j, b in enumerate(frames):
-        d.rectangle(b, outline=(120, 120, 120, 255), width=3)
+    for b in ctx:  # ở chế độ text: vẽ mờ ranh giới panel để dễ định hướng
+        d.rectangle(b, outline=(40, 120, 220, 150), width=2)
+    for b in items:
+        d.rectangle(b, outline=(120, 120, 120, 255), width=2 if args.mode == "text" else 3)
     for n, j in enumerate(picked, 1):
-        b = frames[j]
-        d.rectangle(b, fill=(230, 57, 70, 50), outline=(230, 57, 70, 255), width=6)
+        b = items[j]
+        d.rectangle(b, fill=(230, 57, 70, 60), outline=(230, 57, 70, 255), width=4)
         cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
-        d.ellipse((cx - 34, cy - 34, cx + 34, cy + 34), fill=(230, 57, 70, 255))
-        d.text((cx, cy), str(n), fill="white", font=FONT, anchor="mm")
+        r = int(max(11, min(34, 0.45 * min(b[2] - b[0], b[3] - b[1]))))  # số không che hết box nhỏ
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(230, 57, 70, 255))
+        d.text((cx, cy), str(n), fill="white", font=font(max(14, int(r * 1.3))), anchor="mm")
     return img
 
 
 def status(k, picked, msg=""):
     done = sum(KEYS[x] in LABELS for x in range(len(KEYS)))
     if k is None:
-        return f"Xong! Đã xử lý {done}/{len(KEYS)} trang. Nhãn lưu ở {args.out}. {msg}"
-    nf = len(SAMPLE[k][4])
-    return (f"Trang {k + 1}/{len(KEYS)} ({KEYS[k]}), {nf} panel | đã chọn {len(picked)}/{nf} | "
+        return f"Xong! Đã xử lý {done}/{len(KEYS)} trang. Nhãn lưu ở {OUT}. {msg}"
+    n = len(SAMPLE[k][4])
+    return (f"[{args.mode}] Trang {k + 1}/{len(KEYS)} ({KEYS[k]}), {n} box | đã chọn {len(picked)}/{n} | "
             f"đã xử lý {done} {msg}")
 
 
@@ -100,11 +120,16 @@ def on_click(k, picked, evt: gr.SelectData):
     if k is None:
         return show(k, picked)
     x, y = evt.index
-    frames = SAMPLE[k][4]
-    hit = [j for j, b in enumerate(frames) if b[0] <= x <= b[2] and b[1] <= y <= b[3] and j not in picked]
-    if not hit:
-        return show(k, picked, "| (không trúng panel chưa chọn nào)")
-    j = min(hit, key=lambda j: (frames[j][2] - frames[j][0]) * (frames[j][3] - frames[j][1]))
+    items = SAMPLE[k][4]
+
+    def hit(pad):
+        return [j for j, b in enumerate(items) if j not in picked
+                and b[0] - pad <= x <= b[2] + pad and b[1] - pad <= y <= b[3] + pad]
+
+    cand = hit(0) or hit(PAD)  # ưu tiên trúng hẳn, rồi mới đến vùng dung sai
+    if not cand:
+        return show(k, picked, "| (không trúng box chưa chọn nào)")
+    j = min(cand, key=lambda j: (items[j][2] - items[j][0]) * (items[j][3] - items[j][1]))
     return show(k, picked + [j])
 
 
@@ -116,33 +141,38 @@ def on_reset(k, picked):
     return show(k, [])
 
 
+def _record(k, picked, note, skip):
+    t, i, w, h, items, ctx = SAMPLE[k]
+    LABELS[KEYS[k]] = {"title": t, "page": i, "size": [w, h], "boxes": items,
+                       "order": [] if skip else picked, "skip": skip, "note": note or ""}
+    if ctx:
+        LABELS[KEYS[k]]["frames"] = ctx
+    save()
+    nxt = next_idx(k + 1)
+    return show(nxt if nxt is not None else next_idx(), [])
+
+
 def on_save(k, picked, note):
     if k is None:
         return show(k, picked)
-    t, i, w, h, frames = SAMPLE[k]
-    if len(picked) != len(frames):
-        return show(k, picked, f"| CHƯA LƯU: cần chọn đủ {len(frames)} panel (hoặc bấm Bỏ qua)")
-    LABELS[KEYS[k]] = {"title": t, "page": i, "size": [w, h], "boxes": frames,
-                       "order": picked, "skip": False, "note": note or ""}
-    save()
-    return show(next_idx(k + 1) if next_idx(k + 1) is not None else next_idx(), [])
+    n = len(SAMPLE[k][4])
+    if len(picked) != n:
+        return show(k, picked, f"| CHƯA LƯU: cần chọn đủ {n} box (hoặc bấm Bỏ qua)")
+    return _record(k, picked, note, False)
 
 
 def on_skip(k, picked, note):
     if k is None:
         return show(k, picked)
-    t, i, w, h, frames = SAMPLE[k]
-    LABELS[KEYS[k]] = {"title": t, "page": i, "size": [w, h], "boxes": frames,
-                       "order": [], "skip": True, "note": note or ""}
-    save()
-    return show(next_idx(k + 1) if next_idx(k + 1) is not None else next_idx(), [])
+    return _record(k, picked, note, True)
 
 
+what = "từng box thoại" if args.mode == "text" else "từng panel"
 with gr.Blocks(title="Gán nhãn reading order") as demo:
-    gr.Markdown("Bấm vào **từng panel theo thứ tự đọc** (trang đôi: hết trang phải rồi trang trái). "
-                "Bấm nhầm thì **Hoàn tác**. Panel lạ/không đọc được thứ tự -> ghi chú rồi **Bỏ qua**.")
+    gr.Markdown(f"Bấm vào **{what} theo thứ tự đọc** (trang đôi: hết trang phải rồi trang trái). "
+                "Bấm nhầm thì **Hoàn tác**. Layout lạ/không đọc được thứ tự -> ghi chú rồi **Bỏ qua**.")
     info = gr.Markdown()
-    img = gr.Image(type="pil", interactive=False, label="Bấm để chọn panel", height=720, format="jpeg")
+    img = gr.Image(type="pil", interactive=False, label="Bấm để chọn", height=720, format="jpeg")
     note = gr.Textbox(label="Ghi chú (tuỳ chọn)", lines=1)
     with gr.Row():
         b_undo = gr.Button("Hoàn tác")
