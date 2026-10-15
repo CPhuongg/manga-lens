@@ -38,9 +38,19 @@ luôn trả ký tự toàn chiều rộng còn GT hay dùng `…`/`・`. Cờ `-
 |---|---|---|---|---|
 | Chuẩn hóa dấu câu (mặc định) | **0.034** | 0.000 | **0.039** (37590 ký tự) | **84.3%** |
 | `--strict` (cũ) | 0.156 | 0.000 | 0.130 | 58.0% |
-=> ~4x "lỗi" trước đó chỉ là khác cách viết dấu câu. CHƯA chạy lại box dự đoán / end-to-end với
-chuẩn hóa mới (số cũ theo --strict: dự đoán 0.152, end-to-end 0.176, recall box text 97.2% ở
-conf 0.25, FP 125/3028) -> chạy lại `eval_ocr.py --weights ...`. Detector không phải nút cổ chai.
+=> ~4x "lỗi" trước đó chỉ là khác cách viết dấu câu.
+
+Theo từng nhóm box (chuẩn hóa dấu câu, cùng 200 trang, detector yolo11s conf>=0.25, ghép IoU>=0.5):
+| Nhóm | Số box | CER mean | Median | Đúng hoàn toàn |
+|---|---|---|---|---|
+| GT box (giới hạn trên của OCR) | 2987 | 0.034 | 0.000 | 84.3% |
+| Box dự đoán (chỉ box ghép được với GT) | 2903 | 0.027 | 0.000 | 84.4% |
+| **End-to-end** (GT bị sót tính CER 1.0) | 2987 | **0.055** | 0.000 | 82.1% |
+
+Recall box text 97.2%, FP 125/3028 box dự đoán. "Box dự đoán" thấp hơn GT vì loại 84 box bị sót
+(hay là box khó) -> lệch mẫu, không phải detector đọc tốt hơn. Chênh GT -> end-to-end (0.021) gần
+như toàn bộ do 84 box bị sót (2.8%) -> ~38% lỗi end-to-end đến từ recall detector chứ không phải
+OCR. Cách tính hơi bi quan (detector gộp 2 box sát nhau thì cả hai bị tính sót, IoU<0.5).
 
 Lỗi thật còn lại (40 box tệ nhất, `--worst 40`):
 - Chữ dài trên box rất hẹp và dài (Raphael: chú thích 30x945, 52x1028; MiraiSan/097): CER 0.8-0.9,
