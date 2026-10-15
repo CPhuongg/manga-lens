@@ -19,8 +19,8 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from convert_manga109 import parse_book  # noqa: E402
-from src.ocr import (MISS_CATS, cer, crop, diagnose_miss, levenshtein, match_boxes,  # noqa: E402
-                     normalize, ocr_japanese)
+from src.ocr import (MISS_CATS, add_low_conf, cer, crop, diagnose_miss, levenshtein,  # noqa: E402
+                     match_boxes, normalize, ocr_japanese)
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--root", required=True, type=Path)
@@ -34,6 +34,11 @@ ap.add_argument("--iou", type=float, default=0.5, help="ngưỡng IoU để ghé
 ap.add_argument("--strict", action="store_true",
                 help="so khớp từng ký tự (chỉ bỏ khoảng trắng); mặc định bỏ khác biệt dấu câu "
                      "(．/…/・, toàn/nửa chiều rộng)")
+ap.add_argument("--conf-low", type=float, default=None,
+                help="(cần --weights) lấp chỗ trống: nhận thêm box conf trong [conf-low, conf) nếu "
+                     "không chồng box đã nhận; so sánh recall/FP trước-sau")
+ap.add_argument("--low-overlap", type=float, default=0.3,
+                help="box conf thấp bị loại nếu giao/diện tích-box-nhỏ >= ngưỡng này với box đã nhận")
 ap.add_argument("--diag", action="store_true",
                 help="(cần --weights) phân loại vì sao box GT bị sót: gộp/hạ conf/xé mảnh/lệch/không thấy")
 ap.add_argument("--worst", type=int, default=0, help="in N box GT có CER cao nhất")
@@ -56,6 +61,7 @@ if a.weights:
     det = YOLO(a.weights)
 
 gt_scores, matched_scores, e2e_scores, n_fp, n_pred = [], [], [], 0, 0
+base_match, base_pred, n_extra, n_extra_ok = 0, 0, 0, 0
 misses = []  # (loại, IoU tốt nhất, conf, trang, WxH, text) cho --diag
 gt_edits, gt_chars, records = 0, 0, []  # CER theo tổng ký tự + chi tiết từng box để xem lỗi
 for t, i in pages:
@@ -70,11 +76,23 @@ for t, i in pages:
         records.append((gt_scores[-1], t, i, (x1, y1, x2, y2), gt, pred, c))
     if det is None:
         continue
-    # --diag: chạy ở conf rất thấp rồi lọc; kết quả >= a.conf giống hệt chạy trực tiếp (NMS xét theo điểm)
-    res = det.predict(img, imgsz=a.imgsz, conf=0.01 if a.diag else a.conf, classes=[1], verbose=False)[0]
+    # chạy ở conf thấp nhất cần (--diag / --conf-low) rồi lọc; kết quả >= a.conf giống hệt chạy
+    # trực tiếp ở a.conf (NMS xét theo điểm)
+    run_conf = min(a.conf, 0.01 if a.diag else a.conf, a.conf_low if a.conf_low else a.conf)
+    res = det.predict(img, imgsz=a.imgsz, conf=run_conf, classes=[1], verbose=False)[0]
     all_p = list(zip(res.boxes.xyxy.cpu().tolist(), res.boxes.conf.cpu().tolist()))
-    preds = [b for b, c in all_p if c >= a.conf]
-    pairs = match_boxes(preds, [g[:4] for g in gts], a.iou)
+    hi = [b for b, c in all_p if c >= a.conf]
+    gt_boxes = [g[:4] for g in gts]
+    base_pairs = match_boxes(hi, gt_boxes, a.iou)  # baseline: chỉ conf >= a.conf (không tốn OCR)
+    base_match += len(base_pairs)
+    base_pred += len(hi)
+    preds = hi
+    if a.conf_low:
+        cands = [(b, c) for b, c in all_p if a.conf_low <= c < a.conf]
+        preds = hi + add_low_conf(hi, cands, a.low_overlap)
+    pairs = match_boxes(preds, gt_boxes, a.iou)
+    n_extra += len(preds) - len(hi)
+    n_extra_ok += sum(p >= len(hi) for p, _ in pairs)
     n_pred += len(preds)
     n_fp += len(preds) - len(pairs)
     score = {j: cer(ocr_japanese(crop(img, preds[p])), gts[j][4], a.strict) for p, j in pairs}
@@ -106,6 +124,11 @@ if det is not None:
     print(f"recall box text (IoU>={a.iou}, conf>={a.conf}): {len(matched_scores) / n_gt:.1%} | "
           f"box dự đoán thừa (FP): {n_fp}/{n_pred}")
     print("  (box dự đoán = chỉ các box ghép được với GT; end-to-end = GT bị bỏ sót tính CER 1.0)")
+    if a.conf_low:
+        print(f"lấp chỗ trống (conf-low={a.conf_low}, overlap<{a.low_overlap}): "
+              f"thêm {n_extra} box, đúng (ghép được GT) {n_extra_ok}, thừa (FP mới) {n_extra - n_extra_ok}")
+        print(f"  baseline conf>={a.conf}: recall {base_match / n_gt:.1%} | FP {base_pred - base_match}/{base_pred}")
+        print(f"  sau lấp chỗ trống     : recall {len(matched_scores) / n_gt:.1%} | FP {n_fp}/{n_pred}")
 
 if a.diag and det is not None:
     print(f"\nChẩn đoán {len(misses)} box GT bị sót (IoU>={a.iou}, conf>={a.conf}):")

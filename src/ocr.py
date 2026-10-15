@@ -47,6 +47,24 @@ def match_boxes(preds, gts, thr: float = 0.5):
     return out
 
 
+def add_low_conf(accepted, cands, max_overlap: float = 0.3):
+    """Nhận thêm box conf thấp CHỈ KHI nó không chồng lên box đã nhận (lấp chỗ trống).
+    accepted = [box] (conf cao); cands = [(box, conf)]. Xét theo conf giảm dần, box vừa nhận
+    cũng được coi là đã nhận (tránh trùng). overlap = giao / diện tích box NHỎ HƠN, nên box
+    nằm trong box lớn hoặc chứa box nhỏ đều bị loại. Trả về list box được thêm."""
+    kept = list(accepted)
+    out = []
+    for b, _ in sorted(cands, key=lambda x: -x[1]):
+        ba = _area(b)
+        if ba <= 0:
+            continue
+        if any(_inter(b, k) / max(1e-9, min(ba, _area(k))) >= max_overlap for k in kept):
+            continue
+        kept.append(b)
+        out.append(b)
+    return out
+
+
 def _inter(a, b) -> float:
     return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
 

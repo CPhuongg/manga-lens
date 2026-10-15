@@ -72,6 +72,19 @@ def test_match_boxes():
     assert len(two) == 1 and two[0][1] == 0  # 1 GT chỉ ghép 1 lần
 
 
+def test_add_low_conf():
+    from src.ocr import add_low_conf
+    hi = [(0, 0, 100, 100)]
+    cands = [((200, 0, 300, 100), 0.2),     # chỗ trống -> nhận
+             ((210, 0, 310, 100), 0.1),     # chồng box vừa nhận -> loại (không trùng)
+             ((10, 10, 50, 50), 0.2),       # nằm trong box cao -> loại
+             ((90, 0, 190, 100), 0.15)]     # chồng 10% box cao: dưới ngưỡng 0.3 -> nhận
+    got = add_low_conf(hi, cands, 0.3)
+    assert (200, 0, 300, 100) in got and (90, 0, 190, 100) in got and len(got) == 2
+    assert add_low_conf(hi, [((0, 0, 100, 100), 0.2)], 0.3) == []   # trùng hẳn -> loại
+    assert add_low_conf([], []) == []
+
+
 def test_diagnose_miss():
     from src.ocr import diagnose_miss
     gt = (0, 0, 100, 100)
