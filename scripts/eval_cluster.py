@@ -143,6 +143,7 @@ def main():
     ap.add_argument("--part", default="both", choices=["cls", "mean", "both"])
     ap.add_argument("--min-count", type=int, default=2, help="chỉ giữ nhân vật có ≥ N box")
     ap.add_argument("--emb-dir", default=Path("data/emb"), type=Path)
+    ap.add_argument("--json", type=Path, default=None, help="ghi số đo tóm tắt ra file (để notebook tự chọn cấu hình)")
     ap.add_argument("--no-test", action="store_true", help="chỉ đánh giá val (chọn tham số), không đụng test")
     ap.add_argument("--thrs", type=float, nargs="+", default=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
     args = ap.parse_args()
@@ -164,7 +165,10 @@ def main():
             best = (mean(r, "bcF"), t)
     thr = best[1]
     print(f"-> chọn ngưỡng {thr} theo val")
+    res = {"thr": thr, "val_bcF": best[0]}
     if args.no_test:
+        if args.json:
+            args.json.write_text(json.dumps(res))
         return
     rows = run(test, dendro(test), thr)
     print(f"{'bộ':24s} {'P':>5s} {'R':>5s} {'pairF':>6s} {'bcF':>5s} {'ARI':>5s} {'NMI':>5s} {'k_pred':>6s} {'k_true':>6s} {'R@1':>5s} {'mAP':>5s}")
@@ -184,6 +188,11 @@ def main():
     for b, (E, y) in test.items():
         rb.append(metrics(y, rng.permutation(y))["bcF"])
     print(f"baseline xáo nhãn (bcF): {np.mean(rb):.3f}")
+    if args.json:
+        res.update({"test_bcF": mean(rows, "bcF"), "test_pairF": mean(rows, "F"), "test_ARI": mean(rows, "ARI"),
+                    "test_k_pred": mean(rows, "k_pred"), "test_k_true": mean(rows, "k_true"),
+                    "test_R1": float(np.mean(r1s)), "test_mAP": float(np.mean(maps)), "shuffle_bcF": float(np.mean(rb))})
+        args.json.write_text(json.dumps(res))
 
 
 if __name__ == "__main__":
