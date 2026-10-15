@@ -14,7 +14,7 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
 - `tests/test_basic.py` — chạy `python tests/test_basic.py` (không cần dữ liệu), hiện 9/9 pass
 
 ## Môi trường (Windows)
-- venv ở `.venv/` (Python 3.13); chạy bằng `.venv/Scripts/python.exe`. torch hiện là bản CPU.
+- venv ở `.venv/` (Python 3.13); chạy bằng `.venv/Scripts/python.exe`. torch hiện là bản CUDA (2.14.1+cu130, cuda=True), gradio 6.30.
 - GPU: MX570 A, chỉ 2 GB VRAM -> train mặc định (yolo11s, imgsz 1024, batch 8) nhiều khả năng
   không đủ; cân nhắc yolo11n / batch nhỏ / imgsz thấp, hoặc train trên Colab/Kaggle.
 - Console Windows là cp1252: chạy script có `print` tiếng Việt phải đặt `PYTHONUTF8=1`.
@@ -28,8 +28,13 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
 - ĐÃ chạy thật (Kaggle, notebook `kaggle_train.ipynb`): train yolo11s (50 epoch, imgsz 1024,
   batch 16, T4, ~5.5 phút/epoch, best = epoch 31) và `eval_det.py` trên test.
 - ĐÃ chạy thật (Kaggle): `eval_ocr.py` (manga-ocr trên GPU, 200 trang test, seed 0).
-- CHƯA chạy thật: pipeline, app. Lỗi đầu tiên khi chạy thật nhiều khả năng nằm ở đây,
-  sửa là việc bình thường.
+- ĐÃ chạy thật (local, MX570 2GB): `src/pipeline.py` + `app.py` (Gradio, gọi API /run OK) trên 1 trang
+  test (Akuhamu_008, trang đôi 1654x1170): 9 frame / 23 text / 15 face / 19 body, không lỗi; ~18 s
+  (GPU) / ~23 s (CPU) cho cả detect+OCR 23 box. Thứ tự đọc đúng khi xem ảnh: tách trang đôi (phải
+  trước), panel phải->trái theo hàng, thoại phải->trái trong panel. Mới kiểm tra 1 trang bằng mắt,
+  CHƯA đo định lượng (Kendall tau) -> xem việc 4. Tiêu đề trên đầu trang (パニック×2, 逆効果) được gán
+  vào panel gần nhất như thoại đầu tiên (chưa tách loại).
+- CHƯA làm: đo reading order (Kendall tau), mask SAM, README, bảng so sánh model.
 
 ### Kết quả OCR (manga-ocr, 200 trang test ngẫu nhiên, seed 0, 2987 text box GT)
 `normalize()` mặc định bỏ khác biệt chỉ do dấu câu (NFKC, gộp dãy `…・･．.`, `〜`->`~`); manga-ocr
