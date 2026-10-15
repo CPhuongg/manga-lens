@@ -1,7 +1,11 @@
 """OCR cho text box. Tiếng Nhật: manga-ocr. Có thể thay backend cho tiếng Việt."""
 from __future__ import annotations
 
+import re
+import unicodedata
+
 _mocr = None
+_DOTS = re.compile(r"[.・･…]+")
 
 
 def ocr_japanese(pil_img) -> str:
@@ -53,12 +57,19 @@ def levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
-def normalize(s: str) -> str:
-    return "".join(s.split())
+def normalize(s: str, strict: bool = False) -> str:
+    """Bỏ khoảng trắng. Mặc định còn bỏ khác biệt chỉ do cách viết dấu câu: manga-ocr luôn trả
+    ký tự toàn chiều rộng (．！？) và GT hay dùng … ・ ･ -> NFKC, gộp dãy chấm/chấm lửng thành 1
+    dấu, 〜 -> ~. strict=True: chỉ bỏ khoảng trắng (so khớp từng ký tự)."""
+    s = "".join(s.split())
+    if strict:
+        return s
+    s = unicodedata.normalize("NFKC", s).replace("〜", "~")
+    return _DOTS.sub("…", s)
 
 
-def cer(pred: str, gt: str) -> float:
-    pred, gt = normalize(pred), normalize(gt)
+def cer(pred: str, gt: str, strict: bool = False) -> float:
+    pred, gt = normalize(pred, strict), normalize(gt, strict)
     if not gt:
         return 0.0 if not pred else 1.0
     return levenshtein(pred, gt) / len(gt)

@@ -53,6 +53,12 @@ def test_order_page_assignment():
 def test_cer():
     assert cer("こんにちは", "こんにちは") == 0
     assert abs(cer("こんにちわ", "こんにちは") - 0.2) < 1e-9
+    # khác biệt chỉ do cách viết dấu câu thì không tính là lỗi
+    assert cer("．．．", "…") == 0 and cer("．．．．．．", "………") == 0 and cer("．．", "・・・") == 0
+    assert cer("ＧＯＡＬ！", "GOAL!") == 0 and cer("わう．．．！？", "わう…!?") == 0
+    assert cer("な～～～", "な〜〜〜") == 0
+    assert cer("．．．", "…", strict=True) > 0  # --strict giữ cách so cũ
+    assert cer("そう．．．そうだな", "････････") > 0  # ảo giác chữ vẫn bị tính là sai
 
 
 def test_match_boxes():

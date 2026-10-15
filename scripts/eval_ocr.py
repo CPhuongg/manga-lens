@@ -30,6 +30,9 @@ ap.add_argument("--weights", default=None, help="best.pt của detector -> đo t
 ap.add_argument("--imgsz", type=int, default=1024)
 ap.add_argument("--conf", type=float, default=0.25)
 ap.add_argument("--iou", type=float, default=0.5, help="ngưỡng IoU để ghép box dự đoán với GT")
+ap.add_argument("--strict", action="store_true",
+                help="so khớp từng ký tự (chỉ bỏ khoảng trắng); mặc định bỏ khác biệt dấu câu "
+                     "(．/…/・, toàn/nửa chiều rộng)")
 ap.add_argument("--worst", type=int, default=0, help="in N box GT có CER cao nhất")
 ap.add_argument("--dump-dir", type=Path, default=None, help="lưu ảnh cắt của các box --worst + worst.tsv")
 a = ap.parse_args()
@@ -57,9 +60,9 @@ for t, i in pages:
     for x1, y1, x2, y2, gt in gts:
         c = crop(img, (x1, y1, x2, y2))
         pred = ocr_japanese(c)
-        gt_scores.append(cer(pred, gt))
-        gt_edits += levenshtein(normalize(pred), normalize(gt))
-        gt_chars += len(normalize(gt))
+        gt_scores.append(cer(pred, gt, a.strict))
+        gt_edits += levenshtein(normalize(pred, a.strict), normalize(gt, a.strict))
+        gt_chars += len(normalize(gt, a.strict))
         records.append((gt_scores[-1], t, i, (x1, y1, x2, y2), gt, pred, c))
     if det is None:
         continue
@@ -68,7 +71,7 @@ for t, i in pages:
     pairs = match_boxes(preds, [g[:4] for g in gts], a.iou)
     n_pred += len(preds)
     n_fp += len(preds) - len(pairs)
-    score = {j: cer(ocr_japanese(crop(img, preds[p])), gts[j][4]) for p, j in pairs}
+    score = {j: cer(ocr_japanese(crop(img, preds[p])), gts[j][4], a.strict) for p, j in pairs}
     matched_scores += score.values()
     e2e_scores += [score.get(j, 1.0) for j in range(len(gts))]  # GT bị bỏ sót tính CER = 1
 
