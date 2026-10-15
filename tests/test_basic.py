@@ -51,13 +51,22 @@ def test_order_page_assignment():
 
 
 def test_order_page_overlapping_panels():
-    # Hình học thật (SeisinkiVulnus/026, trang đôi 1654x1170): panel 0 và 1 chồng nhau 56 px (3.4%).
-    # Dung sai 1% làm XY-cut không cắt được -> rơi về sắp theo tâm y và đọc panel TRÁI (1) trước phải (0).
+    # Hình học thật (SeisinkiVulnus/026, trang đôi 1654x1170): panel 0 và 1 chồng nhau 56 px (3.4%) nên
+    # không có đường cắt sạch; phương án dự phòng (hàng theo cạnh trên, phải->trái) phải đọc panel PHẢI (0)
+    # trước panel trái (1). (Cách cũ sắp theo tâm y đọc ngược [1, 0, ...].)
     F = [(1234, 2, 1565, 512), (887, 1, 1290, 507), (0, 2, 762, 1169), (899, 526, 1567, 1165)]
     T = [(1250, 20, 1300, 100), (950, 20, 1000, 100), (100, 50, 200, 150), (1000, 700, 1100, 800)]
-    assert reading_order(F, (1654, 1170), tol_ratio=0.01)[:2] == [1, 0]  # lỗi cũ (dung sai 1%)
-    assert [r["panel"] for r in order_page(F, T, (1654, 1170))] == [0, 1, 3, 2]  # panel_tol mặc định
-    assert [r["panel"] for r in order_page(F, T, (1654, 1170), panel_tol=0.01)][:2] == [1, 0]
+    assert reading_order(F, (1654, 1170), tol_ratio=0.01) == [0, 1, 3, 2]
+    assert [r["panel"] for r in order_page(F, T, (1654, 1170))] == [0, 1, 3, 2]
+    assert [r["panel"] for r in order_page(F, T, (1654, 1170), panel_tol=0.01)] == [0, 1, 3, 2]
+
+
+def test_reading_order_overlapping_panels_fallback():
+    # Hình học thật (trang đơn 1280x1791, panel borderless chồng lên nhau): không có đường cắt sạch.
+    # Cách cũ (sắp theo tâm y) đọc panel TRÁI (idx 1) trước panel PHẢI (idx 4) dù cùng bắt đầu ở mép trên.
+    F = [(0, 1164, 566, 1787), (0, 0, 564, 1145), (469, 245, 1280, 1791), (1059, 197, 1280, 1620),
+         (477, 0, 1244, 1573)]
+    assert reading_order(F, (1280, 1791), tol_ratio=0.05) == [4, 1, 3, 2, 0]
 
 
 def test_cer():

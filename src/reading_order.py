@@ -67,10 +67,20 @@ def reading_order(boxes, page_size=None, tol_ratio=0.01, rtl=True, spread=None):
                 if axis == "x" and not rtl:
                     groups = groups[::-1]
                 return [j for g in groups for j in rec(g)]
-        # không tách được (panel chéo/chồng lấn): xếp theo tâm
+        # Không tách được (panel chồng lấn/borderless, detector hay trả các panel lớn chồng lên nhau):
+        # gom thành hàng theo CẠNH TRÊN (dung sai tol) rồi đọc phải->trái trong hàng. Cách cũ sắp theo
+        # tâm y làm panel trái (tâm y thấp hơn) đứng trước panel phải cùng bắt đầu ở mép trên trang.
         sgn = -1 if rtl else 1
-        return sorted(idxs, key=lambda i: ((boxes[i][1] + boxes[i][3]) / 2,
-                                           sgn * (boxes[i][0] + boxes[i][2]) / 2))
+        order = sorted(idxs, key=lambda i: boxes[i][1])
+        rows, cur = [], [order[0]]
+        for i in order[1:]:
+            if boxes[i][1] - boxes[cur[0]][1] <= tol:
+                cur.append(i)
+            else:
+                rows.append(cur)
+                cur = [i]
+        rows.append(cur)
+        return [i for r in rows for i in sorted(r, key=lambda i: sgn * (boxes[i][0] + boxes[i][2]))]
 
     idxs = list(range(len(boxes)))
     if spread and page_size:

@@ -53,14 +53,17 @@ là 0.156, nhưng phần lớn là khác cách viết dấu câu. Mặc định 
 
 | Panel \| text | Kendall tau | Trang đúng hoàn toàn |
 |---|---|---|
-| GT \| GT | 0.986 | 28/30 |
-| **dự đoán \| dự đoán (pipeline thật)** | **0.987** | **29/30** |
+| GT \| GT | 0.991 | 28/30 |
+| **dự đoán \| dự đoán (pipeline thật)** | **0.991** | **29/30** |
 | XY-cut thẳng trên text, không dùng panel | 0.942 | 19/30 |
 | baseline: trên xuống, phải sang trái | 0.410 | 0/30 |
 
-Hai điểm mấu chốt: (1) **tách trang đôi** là bắt buộc (tắt đi, tau còn 0.606); (2) viền panel thật hay
-chồng/lệch nhau 30-60 px nên dung sai XY-cut mặc định 1% không cắt được. Dùng dung sai riêng
-`panel_tol = 0.05` cho panel đưa tỉ lệ trang đúng từ 20/30 lên 28/30 (box GT).
+Ba điểm mấu chốt: (1) **tách trang đôi** là bắt buộc (tắt đi, tau còn 0.606); (2) viền panel thật hay chồng/lệch
+nhau 30-60 px nên dung sai XY-cut mặc định 1% không cắt được: dung sai riêng `panel_tol = 0.05` cho panel đưa tỉ lệ
+trang đúng từ 20/30 lên 28/30 (box GT); (3) khi panel chồng lấn hẳn và không có đường cắt sạch, phương án dự phòng
+sắp theo **cạnh trên rồi phải sang trái** (thay vì tâm y) đọc đúng hơn: tau 0.986 lên 0.991, panel 15/16 lên 16/16.
+Trên một chương truyện thật không có nhãn, detector hay trả các panel chồng lên nhau, và phương án dự phòng mới giảm số
+cặp thoại bị đọc ngược chiều từ 12 xuống 4 (chỉ số gián tiếp, chưa có nhãn thật).
 
 ### 4. Chuỗi cả pipeline (ước lượng)
 detector tìm ~98% text → thứ tự thoại đúng ở 29/30 trang → OCR sai ~3-4% ký tự trên box đúng.

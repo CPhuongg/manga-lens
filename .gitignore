@@ -17,3 +17,5 @@ gt.png
 weights/
 *.pt
 runs_kaggle/labels.jpg
+build/
+out/

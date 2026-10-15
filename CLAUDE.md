@@ -16,6 +16,16 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
 - `scripts/eval_order_pred.py` — như eval_order nhưng với box detector dự đoán (tách 4 tổ hợp panel|text GT/dự đoán)
 - `scripts/eval_order.py --mode text|panel` — Kendall tau + % trang đúng. Chế độ text so: qua panel
   (pipeline hiện tại) / XY-cut thẳng trên text (không panel) / baseline -> trả lời "có cần panel để sắp thoại".
+- `scripts/run_pages.py` — chạy pipeline trên truyện thật (ảnh/thư mục/.cbz) -> `out/<tên>/` (gitignored): ảnh chú thích, transcript.txt, result.json
+- `scripts/export_koma.py` — tạo `.mtp.json` cho app dịch Koma (`D:/MINI APP/manga_trans_pair`, 1 file HTML + serve.py :8777):
+  model khoanh ô thoại + điền chữ Nhật (OCR) + đánh số theo thứ tự đọc. Dùng: Koma -> Nhập .json -> Gắn lại ảnh.
+  Koma lưu ô dạng CHUẨN HOÁ 0-1 (x,y,w,h theo kích thước trang), không phải px; chỉ dùng cho chương MỚI ("Ghi đè" của
+  Koma xoá bản dịch cũ). Đã kiểm tra bằng cách nhập vào Koma chạy ở cổng riêng 8790 (kho IndexedDB tách theo cổng).
+- `app.py` — demo Gradio (mặc định `weights/best.pt`, chỉnh conf/imgsz, bật/tắt OCR, không lưu ảnh)
+- `space/` + `scripts/make_space.py` — đóng gói Hugging Face Space vào `build/space/` (gitignored); đẩy lên bằng
+  `hf upload <user>/manga-lens build/space . --repo-type space`. CPU mô phỏng (máy local): detect 3.7 s (imgsz 1024)
+  / 1.8 s (640), thêm OCR 23 box -> 22.6 s/trang. TRƯỚC KHI public: xác nhận điều khoản Manga109 có cho phát hành
+  trọng số huấn luyện từ nó không (chưa xác nhận); demo không kèm ví dụ ảnh truyện.
 - `src/reading_order.py` — XY-cut đệ quy RTL + gán text vào panel (+ `kendall_tau`)
 - `src/ocr.py`, `src/pipeline.py`, `app.py` — OCR, pipeline end-to-end, demo Gradio
 - `tests/test_basic.py` — chạy `python tests/test_basic.py` (không cần dữ liệu), hiện 9/9 pass
@@ -92,29 +102,31 @@ Lỗi thật còn lại (40 box tệ nhất, `--worst 40`):
 Thứ tự THOẠI, 30 trang test (chuẩn đo chính), `scripts/eval_order.py --mode text`:
 | Cách | Tau mean | Đúng hoàn toàn |
 |---|---|---|
-| **qua panel, `panel_tol=0.05` (pipeline)** | **0.986** | **28/30 (93.3%)** |
-| qua panel, dung sai cũ 0.01 | 0.882 | 20/30 (66.7%) |
+| **qua panel (pipeline: `panel_tol=0.05` + dự phòng theo cạnh trên)** | **0.991** | **28/30 (93.3%)** |
 | XY-cut thẳng trên text (không panel) | 0.940 | 18/30 (60%) |
 | thẳng, tắt tách trang đôi | 0.606 | 1/30 |
 | baseline (y rồi phải->trái) | 0.410 | 0/30 |
-Nguyên nhân lỗi cũ: viền panel thật hay chồng/lệch nhau 30-60 px (2-4% bề rộng trang đôi) > dung sai 1%
-của XY-cut -> không cắt được -> rơi về sắp theo tâm y -> đọc panel trái trước phải (vd SeisinkiVulnus/026).
-`order_page(..., panel_tol=0.05)` dùng dung sai riêng cho panel; dung sai text (trong panel) gần như không
-ảnh hưởng. Panel: 16 trang nhãn độc lập cũng tăng 14/16 -> 15/16 (tau 0.994). LƯU Ý: 0.05 chọn trên chính
-30 trang này (in-sample); leave-one-title-out 28/30 vs 20/30 -> không giống overfit, nhưng mẫu nhỏ.
-Còn sai: WarewareHaOniDearu/090 (layout lệch hàng, nhãn đọc theo cột; tau 0.60) -> layout nhập nhằng.
+Lịch sử sửa (đều đo trên các nhãn này): (1) dung sai XY-cut 1% quá chặt vì viền panel thật chồng/lệch 30-60 px
+-> `order_page(panel_tol=0.05)`: 20/30 -> 28/30; (2) khi XY-cut không cắt được (panel chồng lấn/borderless), dự phòng
+cũ sắp theo TÂM y làm panel trái đứng trước panel phải cùng mép trên -> dự phòng mới: gom hàng theo CẠNH TRÊN
+(dung sai tol) rồi phải->trái: thoại tau 0.986 -> 0.991, panel 15/16 -> 16/16, KHÔNG xấu đi ở đâu; với dự phòng
+mới thì tol 0.01 hay 0.05 cho cùng kết quả ở thoại (panel_tol vẫn có lợi ở nhãn panel: 87.5% -> 100%).
+LƯU Ý: tham số chọn trên chính các trang này (in-sample); leave-one-title-out cho kết quả tương tự; mẫu nhỏ.
+Còn sai: WarewareHaOniDearu/090 (layout lệch hàng, nhãn đọc theo cột; tau ~0.7) -> layout nhập nhằng.
 Với box DETECTOR dự đoán (yolo11s conf 0.25, `scripts/eval_order_pred.py`, cùng 30 trang; tau/đúng tính trên text
 ghép được với GT, IoU>=0.5): panel recall 98.9% / precision 95.9% (279/291 dự đoán); text recall 98.1%
 (411/419), FP 12 (2.8%).
 | panel \| text | Tau mean | Đúng hoàn toàn |
 |---|---|---|
-| GT \| GT (tham chiếu) | 0.986 | 28/30 |
-| dự đoán \| GT | 0.986 | 28/30 |
-| GT \| dự đoán | 0.987 | 29/30 |
-| **dự đoán \| dự đoán (pipeline thật)** | **0.987** | **29/30 (97%)** |
+| GT \| GT (tham chiếu) | 0.991 | 28/30 |
+| dự đoán \| GT | 0.991 | 28/30 |
+| GT \| dự đoán | 0.991 | 29/30 |
+| **dự đoán \| dự đoán (pipeline thật)** | **0.991** | **29/30 (97%)** |
 | dự đoán, thẳng (không panel) | 0.942 | 19/30 (63%) |
-=> detector gần như không làm giảm độ chính xác thứ tự (vẫn là in-sample cho panel_tol; mẫu 30 trang;
-8 text bị sót không nằm trong số tau, 12 box thừa chưa đo ảnh hưởng). Trang sai duy nhất: Ware/090.
+Truyện thật (chương số hoá 1280x1790, 66 trang, KHÔNG có nhãn): detector hay trả các "panel" chồng lên nhau rất lớn
+(vd trang 3: x 469-1280 chồng x 477-1244 chồng x 1059-1280) nên XY-cut không có đường cắt sạch -> dự phòng. Với dự phòng
+cũ có 12 cặp thoại "trái đọc trước phải cùng hàng" ở 8 trang; dự phòng mới còn 4 cặp ở 2 trang. Đây chỉ là chỉ số
+gián tiếp (chưa có nhãn thật cho truyện này); cần người xem lại bằng mắt.
 Nhãn panel (`data/reading_order_labels.json`, 16 trang) ban đầu gán TRANG TRÁI TRƯỚC (ngược quy ước,
 tau ~ 0 với thuật toán); đã hoán đổi hai nửa bằng mã, bản gốc ở `data/reading_order_labels.leftfirst.bak.json`.
 Gán nhãn mới luôn đọc hết TRANG PHẢI rồi mới sang trang trái.
