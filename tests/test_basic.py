@@ -72,6 +72,18 @@ def test_match_boxes():
     assert len(two) == 1 and two[0][1] == 0  # 1 GT chỉ ghép 1 lần
 
 
+def test_diagnose_miss():
+    from src.ocr import diagnose_miss
+    gt = (0, 0, 100, 100)
+    d = lambda preds: diagnose_miss(gt, preds, 0.25)[0]
+    assert d([((0, 0, 200, 100), 0.9)]) == "merged"        # box lớn gộp phủ GT
+    assert d([((0, 0, 100, 100), 0.1)]) == "low_conf"      # chỉ khớp ở conf thấp
+    assert d([((0, 0, 40, 100), 0.9), ((50, 0, 90, 100), 0.9)]) == "split"  # xé mảnh
+    assert d([((50, 50, 150, 150), 0.9)]) == "loc"       # chồng lệch (IoU ~0.14)
+    assert d([((300, 300, 400, 400), 0.9)]) == "absent"
+    assert d([]) == "absent"
+
+
 def test_converter():
     xml = """<book title="T"><characters/><pages>
       <page index="0" width="1000" height="1400">

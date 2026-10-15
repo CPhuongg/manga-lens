@@ -47,6 +47,45 @@ def match_boxes(preds, gts, thr: float = 0.5):
     return out
 
 
+def _inter(a, b) -> float:
+    return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+
+
+def _area(a) -> float:
+    return (a[2] - a[0]) * (a[3] - a[1])
+
+
+MISS_CATS = ("merged", "low_conf", "split", "loc", "absent")
+
+
+def diagnose_miss(gt, preds, main_conf: float, thr: float = 0.5):
+    """Vì sao box GT không ghép được? preds = [(box, conf)] (lấy ở conf rất thấp).
+    Trả về (loại, IoU cao nhất, conf của box đó):
+      merged   : có box (conf>=main_conf) phủ >=80% GT hoặc IoU>=thr nhưng đã dùng cho GT khác
+                 (detector gộp nhiều GT làm một)
+      low_conf : chỉ có box dưới main_conf khớp được (IoU>=thr) -> hạ conf sẽ lấy lại
+      split    : có box nằm gọn >=80% trong GT nhưng nhỏ hơn nhiều (detector xé một GT thành mảnh)
+      loc      : có box chồng lên (IoU 0.1..thr) nhưng lệch vị trí/kích thước
+      absent   : không có box nào chồng đáng kể (IoU < 0.1) -> detector không thấy
+    """
+    ga = _area(gt)
+    best_i, best_c = 0.0, 0.0
+    for b, c in preds:
+        v = iou(b, gt)
+        if v > best_i:
+            best_i, best_c = v, c
+    for b, c in preds:
+        if c >= main_conf and ga > 0 and (_inter(b, gt) / ga >= 0.8 or iou(b, gt) >= thr):
+            return "merged", best_i, best_c
+    if best_i >= thr:
+        return "low_conf", best_i, best_c
+    for b, c in preds:
+        ba = _area(b)
+        if ba > 0 and _inter(b, gt) / ba >= 0.8:
+            return "split", best_i, best_c
+    return ("loc" if best_i >= 0.1 else "absent"), best_i, best_c
+
+
 def levenshtein(a: str, b: str) -> int:
     prev = list(range(len(b) + 1))
     for i, ca in enumerate(a, 1):
