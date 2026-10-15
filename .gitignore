@@ -12,3 +12,8 @@ runs/
 
 # ảnh xuất ra khi debug
 gt.png
+
+# weights và ảnh có thể chứa trang truyện (bản quyền)
+weights/
+*.pt
+runs_kaggle/labels.jpg
