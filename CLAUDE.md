@@ -13,6 +13,7 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
   đôi; tiếp tục được). `--mode text` (mặc định, 30 trang): thứ tự THOẠI trên box `text` GT = chuẩn đo chính
   -> `data/reading_order_text_labels.json`. `--mode panel` (50 trang): thứ tự panel, chỉ để chẩn đoán
   -> `data/reading_order_labels.json`. Mẫu lấy từ tập test, seed 0.
+- `scripts/eval_order_pred.py` — như eval_order nhưng với box detector dự đoán (tách 4 tổ hợp panel|text GT/dự đoán)
 - `scripts/eval_order.py --mode text|panel` — Kendall tau + % trang đúng. Chế độ text so: qua panel
   (pipeline hiện tại) / XY-cut thẳng trên text (không panel) / baseline -> trả lời "có cần panel để sắp thoại".
 - `src/reading_order.py` — XY-cut đệ quy RTL + gán text vào panel (+ `kendall_tau`)
@@ -40,7 +41,7 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
   trước), panel phải->trái theo hàng, thoại phải->trái trong panel. Mới kiểm tra 1 trang bằng mắt,
   CHƯA đo định lượng (Kendall tau) -> xem việc 4. Tiêu đề trên đầu trang (パニック×2, 逆効果) được gán
   vào panel gần nhất như thoại đầu tiên (chưa tách loại).
-- CHƯA làm: đo reading order với panel DỰ ĐOÁN, mask SAM, README, bảng so sánh model.
+- CHƯA làm: mask SAM, README, bảng so sánh model (yolo11n/m), đo end-to-end gộp thứ tự + OCR trên toàn bộ trang.
 
 ### Kết quả OCR (manga-ocr, 200 trang test ngẫu nhiên, seed 0, 2987 text box GT)
 `normalize()` mặc định bỏ khác biệt chỉ do dấu câu (NFKC, gộp dãy `…・･．.`, `〜`->`~`); manga-ocr
@@ -102,7 +103,18 @@ của XY-cut -> không cắt được -> rơi về sắp theo tâm y -> đọc p
 ảnh hưởng. Panel: 16 trang nhãn độc lập cũng tăng 14/16 -> 15/16 (tau 0.994). LƯU Ý: 0.05 chọn trên chính
 30 trang này (in-sample); leave-one-title-out 28/30 vs 20/30 -> không giống overfit, nhưng mẫu nhỏ.
 Còn sai: WarewareHaOniDearu/090 (layout lệch hàng, nhãn đọc theo cột; tau 0.60) -> layout nhập nhằng.
-CHƯA đo với panel do detector dự đoán (mới dùng panel GT) -> việc tiếp theo.
+Với box DETECTOR dự đoán (yolo11s conf 0.25, `scripts/eval_order_pred.py`, cùng 30 trang; tau/đúng tính trên text
+ghép được với GT, IoU>=0.5): panel recall 98.9% / precision 95.9% (279/291 dự đoán); text recall 98.1%
+(411/419), FP 12 (2.8%).
+| panel \| text | Tau mean | Đúng hoàn toàn |
+|---|---|---|
+| GT \| GT (tham chiếu) | 0.986 | 28/30 |
+| dự đoán \| GT | 0.986 | 28/30 |
+| GT \| dự đoán | 0.987 | 29/30 |
+| **dự đoán \| dự đoán (pipeline thật)** | **0.987** | **29/30 (97%)** |
+| dự đoán, thẳng (không panel) | 0.942 | 19/30 (63%) |
+=> detector gần như không làm giảm độ chính xác thứ tự (vẫn là in-sample cho panel_tol; mẫu 30 trang;
+8 text bị sót không nằm trong số tau, 12 box thừa chưa đo ảnh hưởng). Trang sai duy nhất: Ware/090.
 Nhãn panel (`data/reading_order_labels.json`, 16 trang) ban đầu gán TRANG TRÁI TRƯỚC (ngược quy ước,
 tau ~ 0 với thuật toán); đã hoán đổi hai nửa bằng mã, bản gốc ở `data/reading_order_labels.leftfirst.bak.json`.
 Gán nhãn mới luôn đọc hết TRANG PHẢI rồi mới sang trang trái.
