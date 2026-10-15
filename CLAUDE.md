@@ -27,8 +27,21 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
 - ĐÃ chạy thật: `convert_manga109.py`, `viz_gt.py` (ARMS p10, LoveHina_vol01 p20).
 - ĐÃ chạy thật (Kaggle, notebook `kaggle_train.ipynb`): train yolo11s (50 epoch, imgsz 1024,
   batch 16, T4, ~5.5 phút/epoch, best = epoch 31) và `eval_det.py` trên test.
-- CHƯA chạy thật: eval_ocr, pipeline, app. Lỗi đầu tiên khi chạy thật nhiều khả năng nằm ở đây,
+- ĐÃ chạy thật (Kaggle): `eval_ocr.py` (manga-ocr trên GPU, 200 trang test, seed 0).
+- CHƯA chạy thật: pipeline, app. Lỗi đầu tiên khi chạy thật nhiều khả năng nằm ở đây,
   sửa là việc bình thường.
+
+### Kết quả OCR (manga-ocr, 200 trang test ngẫu nhiên, CER trung bình THEO BOX)
+| Nhóm | Số box | CER mean | Median | Đúng hoàn toàn |
+|---|---|---|---|---|
+| GT box (giới hạn trên của OCR) | 2987 | 0.156 | 0.000 | 58.0% |
+| Box dự đoán (ghép được với GT, IoU>=0.5) | 2903 | 0.152 | 0.000 | 57.8% |
+| End-to-end (GT bị bỏ sót tính CER 1.0) | 2987 | 0.176 | 0.000 | 56.1% |
+
+Recall box text 97.2% (conf>=0.25), FP 125/3028 box dự đoán. Detector không phải nút cổ chai;
+OCR là: ~42% box không đúng hoàn toàn, mean >> median nên lỗi tập trung ở một nhóm box nhỏ
+(nghi: chữ dọc nhiều cột, furigana, SFX cách điệu, box rất ngắn). CER theo box coi box 1 ký tự
+nặng bằng box dài -> cần báo thêm CER theo tổng ký tự; chưa phân loại lỗi.
 
 ### Kết quả detector (yolo11s, tập TEST 1220 ảnh, imgsz 1024)
 | Lớp | mAP50 | mAP50-95 |
