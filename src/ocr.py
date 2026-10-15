@@ -19,6 +19,30 @@ def crop(pil_img, box, pad=4):
                          min(w, int(x2) + pad), min(h, int(y2) + pad)))
 
 
+def iou(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def match_boxes(preds, gts, thr: float = 0.5):
+    """Ghép tham lam theo IoU giảm dần. Trả về [(idx_pred, idx_gt)], mỗi box dùng tối đa 1 lần."""
+    cand = sorted(((iou(p, g), i, j) for i, p in enumerate(preds) for j, g in enumerate(gts)),
+                  reverse=True)
+    used_p, used_g, out = set(), set(), []
+    for v, i, j in cand:
+        if v < thr:
+            break
+        if i in used_p or j in used_g:
+            continue
+        used_p.add(i)
+        used_g.add(j)
+        out.append((i, j))
+    return out
+
+
 def levenshtein(a: str, b: str) -> int:
     prev = list(range(len(b) + 1))
     for i, ca in enumerate(a, 1):

@@ -55,6 +55,17 @@ def test_cer():
     assert abs(cer("こんにちわ", "こんにちは") - 0.2) < 1e-9
 
 
+def test_match_boxes():
+    from src.ocr import iou, match_boxes
+    assert iou((0, 0, 10, 10), (0, 0, 10, 10)) == 1.0
+    assert iou((0, 0, 10, 10), (20, 20, 30, 30)) == 0.0
+    gts = [(0, 0, 10, 10), (50, 50, 60, 60)]
+    preds = [(51, 51, 61, 61), (0, 0, 10, 11), (200, 200, 210, 210)]  # pred 2 là box thừa
+    assert sorted(match_boxes(preds, gts)) == [(0, 1), (1, 0)]
+    two = match_boxes([(0, 0, 10, 10), (0, 0, 10, 10)], [(0, 0, 10, 10)])
+    assert len(two) == 1 and two[0][1] == 0  # 1 GT chỉ ghép 1 lần
+
+
 def test_converter():
     xml = """<book title="T"><characters/><pages>
       <page index="0" width="1000" height="1400">

@@ -11,7 +11,7 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
 - `scripts/viz_gt.py` — vẽ GT + số thứ tự trong XML
 - `src/reading_order.py` — XY-cut đệ quy RTL + gán text vào panel
 - `src/ocr.py`, `src/pipeline.py`, `app.py` — OCR, pipeline end-to-end, demo Gradio
-- `tests/test_basic.py` — chạy `python tests/test_basic.py` (không cần dữ liệu), hiện 8/8 pass
+- `tests/test_basic.py` — chạy `python tests/test_basic.py` (không cần dữ liệu), hiện 9/9 pass
 
 ## Môi trường (Windows)
 - venv ở `.venv/` (Python 3.13); chạy bằng `.venv/Scripts/python.exe`. torch hiện là bản CPU.
@@ -25,8 +25,32 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
 ## Trạng thái
 - ĐÃ test: converter (XML giả), split, reading order (vài layout), CER.
 - ĐÃ chạy thật: `convert_manga109.py`, `viz_gt.py` (ARMS p10, LoveHina_vol01 p20).
-- CHƯA chạy thật: train, eval_det, eval_ocr, pipeline, app.
-  Lỗi đầu tiên khi chạy thật nhiều khả năng nằm ở đây, sửa là việc bình thường.
+- ĐÃ chạy thật (Kaggle, notebook `kaggle_train.ipynb`): train yolo11s (50 epoch, imgsz 1024,
+  batch 16, T4, ~5.5 phút/epoch, best = epoch 31) và `eval_det.py` trên test.
+- CHƯA chạy thật: eval_ocr, pipeline, app. Lỗi đầu tiên khi chạy thật nhiều khả năng nằm ở đây,
+  sửa là việc bình thường.
+
+### Kết quả detector (yolo11s, tập TEST 1220 ảnh, imgsz 1024)
+| Lớp | mAP50 | mAP50-95 |
+|---|---|---|
+| frame | 0.993 | 0.970 |
+| text | 0.990 | 0.889 |
+| face | 0.896 | 0.457 |
+| body | 0.920 | 0.690 |
+| **ALL** | **0.949** | **0.752** |
+
+P 0.930 / R 0.904. Suy luận trên T4: 15.8 ms/ảnh (mạng) + 1.9 tiền xử lý + 3.7 hậu xử lý.
+Val (epoch 31) mAP50-95 0.746 -> khớp test, không overfit. `face`/`body` thấp ở mAP50-95
+(box không khít: nhãn không nhất quán, nhỏ, bị che) -> đáng đưa vào phần phân tích lỗi.
+Weights: `weights/best.pt` (local, không commit); đường cong/ma trận nhầm lẫn: `runs_kaggle/`.
+
+### Chạy trên Kaggle
+- Dữ liệu tải từ HF gated `hal-utokyo/Manga109` (cần token Read trong Secrets `HF_TOKEN`),
+  convert ngay trên máy Kaggle; không upload dataset. `data.yaml` phải trỏ path Linux.
+- File văn bản tải từ Kaggle có thể bị bọc markdown (```yaml, dấu `"` quanh từng dòng csv) và
+  đổi đuôi (.csv->.txt); `.pt` có thể bị đổi thành .zip (chỉ cần đổi đuôi lại, đừng giải nén).
+- Output notebook cũ gắn làm input ở `/kaggle/input/notebooks/<user>/<notebook>/`
+  (chứa `yolo/` và `out/runs/detect/runs/<name>/weights/best.pt`).
 
 ## Phát hiện từ dữ liệu thật
 - Mỗi "trang" Manga109 là TRANG ĐÔI (ảnh ~1654x1170, hai trang liền nhau, đọc phải->trái).
