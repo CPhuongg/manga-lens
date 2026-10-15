@@ -72,6 +72,14 @@ def test_match_boxes():
     assert len(two) == 1 and two[0][1] == 0  # 1 GT chỉ ghép 1 lần
 
 
+def test_kendall_tau():
+    from src.reading_order import kendall_tau
+    assert kendall_tau([0, 1, 2, 3], [0, 1, 2, 3]) == 1.0
+    assert kendall_tau([0, 1, 2, 3], [3, 2, 1, 0]) == -1.0
+    assert abs(kendall_tau([0, 1, 2, 3], [1, 0, 2, 3]) - (4 / 6)) < 1e-9  # 1 cặp đảo / 6 cặp
+    assert kendall_tau([5], [5]) == 1.0 and kendall_tau([], []) == 1.0
+
+
 def test_add_low_conf():
     from src.ocr import add_low_conf
     hi = [(0, 0, 100, 100)]

@@ -80,6 +80,24 @@ def reading_order(boxes, page_size=None, tol_ratio=0.01, rtl=True, spread=None):
     return rec(idxs)
 
 
+def kendall_tau(order_a, order_b) -> float:
+    """Kendall tau giữa 2 thứ tự (list chỉ số, cùng tập phần tử): 1 = giống hệt, -1 = ngược.
+    Tập có <2 phần tử -> 1.0."""
+    n = len(order_a)
+    if n < 2:
+        return 1.0
+    pos_b = {v: i for i, v in enumerate(order_b)}
+    seq = [pos_b[v] for v in order_a]  # vị trí trong b, theo thứ tự của a
+    conc = disc = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            if seq[i] < seq[j]:
+                conc += 1
+            else:
+                disc += 1
+    return (conc - disc) / (n * (n - 1) / 2)
+
+
 def _center(b):
     return (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
 
