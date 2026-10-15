@@ -112,9 +112,10 @@ if a.diag and det is not None:
     for cat in MISS_CATS:
         n = sum(m[0] == cat for m in misses)
         print(f"  {cat:9s}: {n:4d} ({n / max(1, len(misses)):.0%})")
-    print("  (loại, IoU tốt nhất, conf của box đó, trang, WxH, GT):")
-    for m in sorted(misses, key=lambda m: (MISS_CATS.index(m[0]), -m[1]))[:60]:
-        print(f"  {m[0]:8s} iou={m[1]:.2f} conf={m[2]:.2f} {m[3]} {m[4]} {m[5]!r}")
+    print("  (loại, IoU tốt nhất, conf của box đó, trang, WxH, GT; tối đa 15 box mỗi loại):")
+    for cat in MISS_CATS:
+        for m in sorted((m for m in misses if m[0] == cat), key=lambda m: -m[1])[:15]:
+            print(f"  {m[0]:8s} iou={m[1]:.2f} conf={m[2]:.2f} {m[3]} {m[4]} {m[5]!r}")
 
 if a.worst:
     records.sort(key=lambda r: r[0], reverse=True)
