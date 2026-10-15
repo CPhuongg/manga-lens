@@ -101,6 +101,22 @@ class ReID(nn.Module):
         return F.normalize(self.head(f), dim=-1)
 
 
+def load_ckpt(model, path, dev):
+    """Nạp best.pt; đổi tên khoá attention giữa các phiên bản transformers (Kaggle cũ vs bản mới)."""
+    sd = torch.load(path, map_location=dev)
+    want = set(model.state_dict())
+    if not set(sd) <= want:
+        ren = {".attention.attention.query.": ".attention.q_proj.", ".attention.attention.key.": ".attention.k_proj.",
+               ".attention.attention.value.": ".attention.v_proj.", ".attention.output.dense.": ".attention.o_proj."}
+        new = {}
+        for k, v in sd.items():
+            for a, b in ren.items():
+                k = k.replace(a, b)
+            new[k] = v
+        sd = new
+    model.load_state_dict(sd)
+
+
 def prep(xu8, dev, aug):
     """uint8 (B,H,W,3) -> tensor chuẩn hoá trên GPU; aug = lật, zoom/dịch, sáng/tương phản, xám."""
     x = torch.from_numpy(np.ascontiguousarray(xu8)).to(dev).permute(0, 3, 1, 2).float() / 255
@@ -206,7 +222,7 @@ def main():
     data = {s: build_crops(books, s, args.root, args.cls, args.cache, max_books=args.max_books) for s in splits}
 
     if args.eval_only:
-        model.load_state_dict(torch.load(out / "best.pt", map_location=dev))
+        load_ckpt(model, out / "best.pt", dev)
         for s in ("val", "test"):
             arr, meta = data[s]
             emb = embed_all(model, arr, dev)
@@ -270,7 +286,7 @@ def main():
     print(f"best val mAP {best:.3f} (epoch {max(log, key=lambda r: r['val_mAP'])['epoch']})")
 
     # embedding val của epoch tốt nhất để chạy eval_cluster --no-test
-    model.load_state_dict(torch.load(out / "best.pt", map_location=dev))
+    load_ckpt(model, out / "best.pt", dev)
     save_emb(args.out / f"{args.tag}_val.npz", embed_all(model, va_arr, dev), va_meta, args.cls)
     print("val embedding ->", args.out / f"{args.tag}_val.npz")
 
