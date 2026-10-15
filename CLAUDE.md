@@ -54,8 +54,18 @@ OCR. Cách tính hơi bi quan (detector gộp 2 box sát nhau thì cả hai bị
 
 Thử hạ conf 0.25 -> 0.15: ghép thêm 13 box GT (recall 97.2% -> 97.6%), e2e CER 0.055 -> 0.051,
 nhưng FP 125 -> 179 (+43%; e2e CER KHÔNG tính FP, FP thật sẽ đẩy chữ rác vào kết quả) -> ~4 FP
-cho mỗi box thu về, KHÔNG đáng; giữ conf 0.25. 71 box vẫn sót ở conf thấp -> nghi do lệch/gộp
-box (IoU<0.5) chứ không do conf; việc cần làm: xem box GT bị sót có pred nào IoU 0.1-0.5 không.
+cho mỗi box thu về, KHÔNG đáng; giữ conf 0.25.
+
+Chẩn đoán 84 box GT bị sót ở conf 0.25 (`--diag`): low_conf 44 (52%, detector tìm đúng chỗ,
+IoU 0.6-0.93, nhưng conf 0.01-0.25), merged 19 (23%, detector gộp nhiều GT làm một: Manga109
+chia box theo cột, detector gộp cả cột -> phần lớn là khác cách chia box, e2e hơi bi quan),
+absent 13 (15%, detector không thấy = chỉ 0.4% tổng box), split 5, loc 3.
+Thử lấp chỗ trống (`--conf-low 0.05`, nhận box conf thấp nếu không chồng box đã nhận):
+thêm 156 box, chỉ 27 đúng (17%) + 129 FP mới (FP 125 -> 254); recall 97.2% -> 98.1%, e2e CER
+0.055 -> 0.048. ~4.8 FP/box đúng, tệ hơn cả hạ conf toàn cục -> KHÔNG dùng. Box conf thấp phần
+lớn là rác (độ chính xác 17% so với 96% ở conf>=0.25) => ngưỡng 0.25 đã hợp lý.
+Kết luận: dừng tinh chỉnh detector cho text box. Việc còn lại có thể làm: metric many-to-one cho
+nhóm `merged`; train yolo11m nếu muốn tăng mAP (không cần cho recall).
 
 Lỗi thật còn lại (40 box tệ nhất, `--worst 40`):
 - Chữ dài trên box rất hẹp và dài (Raphael: chú thích 30x945, 52x1028; MiraiSan/097): CER 0.8-0.9,
