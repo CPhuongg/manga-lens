@@ -1,12 +1,13 @@
 # manga-lens
 
 Phân tích một trang manga: phát hiện **panel / text / mặt / thân**, sắp **thứ tự đọc** (phải sang trái,
-có xử lý trang đôi) và **OCR thoại** tiếng Nhật. Dự án cá nhân để luyện thị giác máy tính.
-Dữ liệu: [Manga109](http://www.manga109.org/) (chỉ dùng cho học thuật). Phạm vi "Mid": chưa gán lời thoại
-cho từng nhân vật.
+có xử lý trang đôi), **OCR thoại** tiếng Nhật và **gom mặt/thân theo nhân vật** trong một chương. Dự án cá nhân
+để luyện thị giác máy tính. Dữ liệu: [Manga109](http://www.manga109.org/) (chỉ dùng cho học thuật). Chưa gán lời
+thoại cho nhân vật nói (speaker attribution).
 
 ```
 ảnh trang -> YOLO11s (frame/text/face/body) -> XY-cut (panel, rồi thoại trong panel) -> manga-ocr -> JSON + ảnh vẽ
+                                            \-> DINOv2 re-ID (face/body) -> gom cụm -> "nhân vật 1, 2, 3..."
 ```
 
 ## Kết quả
@@ -65,7 +66,26 @@ sắp theo **cạnh trên rồi phải sang trái** (thay vì tâm y) đọc đ�
 Trên một chương truyện thật không có nhãn, detector hay trả các panel chồng lên nhau, và phương án dự phòng mới giảm số
 cặp thoại bị đọc ngược chiều từ 12 xuống 4 (chỉ số gián tiếp, chưa có nhãn thật).
 
-### 4. Chuỗi cả pipeline (ước lượng)
+### 4. Gom nhân vật (re-ID, trong MỘT bộ truyện)
+
+Nhãn nhân vật lấy từ XML Manga109 (thuộc tính `character` của mỗi mặt/thân; id chỉ có nghĩa trong từng bộ nên chỉ
+đo được gom **trong một bộ**, không nhận dạng xuyên bộ). Mô hình: DINOv2-small fine-tune bằng SupCon trên 87 bộ train,
+chọn trên 11 bộ val, đo trên 11 bộ test. Gom bằng agglomerative (average-linkage, cosine), ngưỡng cắt chọn trên val.
+Bỏ nhân vật nền "Other"; chỉ xét nhân vật có ≥ 2 box. Số trung bình theo bộ; xáo nhãn ngẫu nhiên cho BCubed F1 ≈ 0.20.
+
+| Test, 11 bộ | Face | Body |
+|---|---|---|
+| DINOv2 thô, box GT: BCubed F1 / ARI | 0.395 / 0.131 | 0.336 / 0.030 |
+| **Fine-tune, box GT**: BCubed F1 / ARI / Recall@1 | **0.636** / 0.554 / 0.842 | **0.549** / 0.430 / 0.766 |
+| Fine-tune, **box detector dự đoán** (end-to-end, tính box thừa và mặt sót) | **0.590** / ARI 0.472 | **0.526** / ARI 0.421 |
+| Recall / precision của detector | 86% / 88% | 90% / 86% |
+
+Fine-tune đưa BCubed F1 của face từ 0.395 lên 0.636 (box GT), và giữ ở 0.590 khi dùng box do detector dự đoán.
+Ghép face + body bằng khoảng cách đặt tay hay MLP học trên val cải thiện ARI/pairwise F1 (ARI 0.47-0.49 so với 0.386 của chỉ-face)
+nhưng **không vượt chỉ-face theo BCubed F1** (0.57-0.59 so với 0.593, chênh nằm trong sai số): ghép chỉ rõ ràng có ích ở
+bộ mà detector bắt mặt kém. Khuyến nghị gom theo mặt; `--mode fused` để bù trang không bắt được mặt.
+
+### 5. Chuỗi cả pipeline (ước lượng)
 detector tìm ~98% text → thứ tự thoại đúng ở 29/30 trang → OCR sai ~3-4% ký tự trên box đúng.
 
 ## Phân tích lỗi
@@ -77,6 +97,9 @@ detector tìm ~98% text → thứ tự thoại đúng ở 29/30 trang → OCR sa
 - **OCR:** lỗi thật tập trung ở (i) chú thích dài trên box rất hẹp và dài (CER 0.8-0.9), (ii) ảo giác chữ trên box
   chỉ có dấu chấm, (iii) chữ viết tay / cách điệu / SFX, (iv) nhiều dòng và chữ lặp, (v) vài nhãn GT nghi nhiễu.
 - **Thứ tự đọc:** trang sai duy nhất là layout lệch hàng mà người gán nhãn đọc theo cột (nhập nhằng).
+- **Gom nhân vật:** vẫn chia thừa cụm (~1.4 lần số nhân vật thật ở box GT) và khác nhau nhiều giữa các bộ (BCubed F1 face
+  0.42-0.81, thấp nhất ở bộ nhiều nhân vật: Hamlet, HeiseiJimen, WarewareHaOniDearu). Bộ detector bắt ít mặt (Akuhamu, recall
+  61%) tụt từ 0.62 (box GT) xuống 0.49 (box dự đoán). Riêng MiraiSan lại gộp thừa, nên một ngưỡng cố định không tối ưu cho mọi bộ.
 
 ## Giới hạn
 
@@ -84,6 +107,8 @@ detector tìm ~98% text → thứ tự thoại đúng ở 29/30 trang → OCR sa
   các trang này nên hơi lạc quan (leave-one-title-out: 28/30, không có dấu hiệu overfit rõ).
 - Thứ tự đọc chỉ tính trên text ghép được với GT; text bị sót và box thừa không nằm trong tau.
 - Chỉ thử một model (`yolo11s`); chưa có bảng so sánh `yolo11n/m`, `rtdetr-l`. Chưa làm mask bong bóng (SAM).
+- Gom nhân vật chỉ đo trên 11 bộ test và chưa có nhãn truyện thật để chấm; số val và test lệch nhau (cùng cấu hình, hai tập
+  khác độ khó), ngưỡng cắt chọn bằng lưới thô trên val và có thể không còn tối ưu trên chương mới. Chưa gán thoại cho nhân vật.
 - Mới chạy demo trên máy cá nhân; chưa đưa lên Hugging Face Spaces.
 
 ## Chạy lại
@@ -103,6 +128,14 @@ python scripts/eval_det.py --weights weights/best.pt
 python scripts/eval_ocr.py --root /path/Manga109 --titles data/yolo/test_titles.txt --weights weights/best.pt
 python scripts/eval_order_pred.py --root /path/Manga109 --weights weights/best.pt   # cần nhãn thứ tự đọc
 
+# Nhận dạng nhân vật: nhãn -> fine-tune (Kaggle, notebook kaggle_reid.ipynb) -> đo
+python scripts/extract_characters.py --root /path/Manga109
+python scripts/eval_cluster_pred.py --cls face --tag f_b --weights-reid data/reid/f_b/best.pt --root /path/Manga109
+
+# Gom nhân vật trên một chương (ảnh / thư mục / .cbz); xem số cụm theo ngưỡng trước rồi chạy thật
+python scripts/run_characters.py "chuong1" --sweep 0.3 0.4 0.5 0.6
+python scripts/run_characters.py "chuong1" --thr 0.5 --draw
+
 # Demo Gradio
 python app.py --weights weights/best.pt
 ```
@@ -118,7 +151,9 @@ rồi `python scripts/eval_order.py --mode text`.
 | `src/reading_order.py` | XY-cut đệ quy phải→trái, tách trang đôi, gán text vào panel, Kendall tau |
 | `src/ocr.py` | manga-ocr, CER, ghép box, chẩn đoán box bị sót |
 | `scripts/` | convert, train, các script đánh giá, công cụ gán nhãn thứ tự đọc |
-| `kaggle_train.ipynb` | train trên Kaggle |
+| `scripts/extract_characters.py`, `train_reid.py`, `eval_cluster*.py`, `eval_fused*.py`, `run_characters.py` | nhận dạng nhân vật: nhãn, fine-tune, đo, ghép face+body, chạy trên chương |
+| `kaggle_train.ipynb` | train detector trên Kaggle |
+| `kaggle_reid.ipynb` | fine-tune re-ID (face/body) trên Kaggle, Run All một lần |
 
 ## Lưu ý
 

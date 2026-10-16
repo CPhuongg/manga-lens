@@ -1,8 +1,9 @@
 # manga-lens — ghi chú bàn giao cho Claude Code
 
 Dự án cá nhân (luyện CV, không gắn với nghiên cứu): phân tích 1 trang manga -> detect
-panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Phạm vi đã chốt: **mức Mid**
-(chưa làm speaker attribution / clustering nhân vật).
+panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Phạm vi ban đầu là **mức Mid**; đã MỞ RỘNG sang
+**nhận dạng nhân vật** (gom mặt/thân theo nhân vật trong một bộ truyện, xem mục "Nhận dạng nhân vật").
+Speaker attribution (gán thoại cho nhân vật nói) CHƯA làm.
 
 ## Cấu trúc
 - `scripts/convert_manga109.py` — XML Manga109 -> YOLO, split theo BỘ TRUYỆN (seed 0, 80/10/10), ghi `data/yolo/data.yaml` + `{split}_titles.txt`
@@ -21,6 +22,16 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
   model khoanh ô thoại + điền chữ Nhật (OCR) + đánh số theo thứ tự đọc. Dùng: Koma -> Nhập .json -> Gắn lại ảnh.
   Koma lưu ô dạng CHUẨN HOÁ 0-1 (x,y,w,h theo kích thước trang), không phải px; chỉ dùng cho chương MỚI ("Ghi đè" của
   Koma xoá bản dịch cũ). Đã kiểm tra bằng cách nhập vào Koma chạy ở cổng riêng 8790 (kho IndexedDB tách theo cổng).
+- Nhận dạng nhân vật (re-ID):
+  - `scripts/extract_characters.py` — giữ thuộc tính `character` của face/body trong XML -> `data/characters.json` (kèm split theo bộ)
+  - `scripts/train_reid.py` — fine-tune DINOv2-small bằng SupCon (face hoặc body); cache crop ở `data/crops/`;
+    test chỉ đụng khi `--eval-only`. `load_ckpt` nạp `best.pt` từ Kaggle (đổi tên khoá attention giữa phiên bản transformers)
+  - `kaggle_reid.ipynb` — train trên Kaggle, Run All một lần (clone repo, 3 cấu hình face tự chọn theo val, rồi body)
+  - `scripts/embed_chars.py` — embedding DINOv2 thô (baseline, chưa fine-tune), checkpoint theo bộ
+  - `scripts/eval_cluster.py` — gom theo bộ + metric (BCubed/pairwise/ARI/NMI, Recall@1, mAP); ngưỡng chọn trên val, `--no-test`, `--json`
+  - `scripts/eval_cluster_pred.py` — như trên nhưng với box face/body do DETECTOR dự đoán (cache `data/pred/`); cách đo A/B
+  - `scripts/eval_fused.py`, `scripts/eval_fused_learned.py` — ghép face+body (khoảng cách đặt tay / MLP học trên val)
+  - `scripts/run_characters.py` — chạy trên chương thật (ảnh/thư mục/.cbz) -> `out/<tên>/characters/` (characters.txt/json, sheet_XX.jpg, `--draw`)
 - `app.py` — demo Gradio (mặc định `weights/best.pt`, chỉnh conf/imgsz, bật/tắt OCR, không lưu ảnh)
 - `space/` + `scripts/make_space.py` — đóng gói Hugging Face Space vào `build/space/` (gitignored); đẩy lên bằng
   `hf upload <user>/manga-lens build/space . --repo-type space`. CPU mô phỏng (máy local): detect 3.7 s (imgsz 1024)
@@ -38,6 +49,11 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
 - Manga109 để NGOÀI repo: `D:\MINI APP\dataset\Manga109_released_2026_05_21` (4.1 GB), dùng `--root` trỏ tới đó.
   Đã convert với `--copy` -> `data/yolo/` (train 8325 / val 1057 / test 1220 ảnh; train có
   79319 frame, 127783 text, 91321 face, 120841 body). `data/` đã trong `.gitignore`.
+  LỆCH SỐ CHƯA LÀM RÕ: `data/yolo/labels/train` hiện có 93.698 dòng face (khớp XML 2026: 93.699), không phải 91.321 như ghi
+  ở trên; chưa biết `weights/best.pt` (detector) được train trên bản convert nào. Val/test khớp XML (10.910 / 13.984 face).
+- Dữ liệu re-ID (đều trong `data/`, gitignored): `characters.json`, `crops/`, `emb/` (embedding thô), `pred/` (box detector dự
+  đoán `det_{val,test}.json` + embedding crop dự đoán + JSON kết quả), `reid/{f_b,b_a}/best.pt` (trọng số fine-tune, tải từ
+  Kaggle; `runs_kaggle/` cũng gitignored).
 
 ## Trạng thái
 - ĐÃ test: converter (XML giả), split, reading order (vài layout), CER.
@@ -51,7 +67,9 @@ panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Ph�
   trước), panel phải->trái theo hàng, thoại phải->trái trong panel. Mới kiểm tra 1 trang bằng mắt,
   CHƯA đo định lượng (Kendall tau) -> xem việc 4. Tiêu đề trên đầu trang (パニック×2, 逆効果) được gán
   vào panel gần nhất như thoại đầu tiên (chưa tách loại).
-- CHƯA làm: mask SAM, README, bảng so sánh model (yolo11n/m), đo end-to-end gộp thứ tự + OCR trên toàn bộ trang.
+- ĐÃ chạy thật (Kaggle + local): re-ID nhân vật (xem mục "Nhận dạng nhân vật") và `run_characters.py` trên chương thật (chỉ
+  nhận xét sơ bộ "tạm ổn"; không có nhãn nên chưa đo).
+- CHƯA làm: mask SAM, bảng so sánh model (yolo11n/m), đo end-to-end gộp thứ tự + OCR trên toàn bộ trang, speaker attribution.
 
 ### Kết quả OCR (manga-ocr, 200 trang test ngẫu nhiên, seed 0, 2987 text box GT)
 `normalize()` mặc định bỏ khác biệt chỉ do dấu câu (NFKC, gộp dãy `…・･．.`, `〜`->`~`); manga-ocr
@@ -145,6 +163,52 @@ Val (epoch 31) mAP50-95 0.746 -> khớp test, không overfit. `face`/`body` th�
 (box không khít: nhãn không nhất quán, nhỏ, bị che) -> đáng đưa vào phần phân tích lỗi.
 Weights: `weights/best.pt` (local, không commit); đường cong/ma trận nhầm lẫn: `runs_kaggle/`.
 
+### Nhận dạng nhân vật (re-ID): gom mặt/thân theo nhân vật TRONG một bộ truyện
+Nhãn: mỗi `<face>`/`<body>` trong XML có `character="<id>"` (phủ 100%: 118.593 face, 157.234 body). Id chỉ có nghĩa trong
+từng bộ (0/3460 id trùng giữa các bộ) => chỉ đo được gom trong một bộ, không có danh tính xuyên bộ. `<text>` KHÔNG có
+nhãn người nói. Nhóm "Other/Others/モブ…" (~9-10% face) là nhân vật nền gộp nhiều người: bị loại khỏi train và đo.
+Mặt nhỏ (cạnh ngắn trung vị ~58 px). 98,9% mặt nằm trong một body (body nhỏ nhất bao nó) cùng nhân vật; 24,6% body không có mặt.
+Test chỉ 11 bộ (360 nhân vật, 233 người có >=5 mặt): số đo dao động mạnh giữa các bộ (BCubed F1 face 0,42-0,81).
+
+Mô hình: DINOv2-small (CLS + mean patch) + head 256 chiều, SupCon (32 nhân vật x 4 crop/batch), train 87 bộ train, chọn trên val.
+Face `f_b` (mở cả 12 block, lr 1e-5, 10 epoch; thắng `f_a`/`f_c` theo val), body `b_a` (mở 4 block, lr 2e-5). Crop: face 126x126,
+body 224x112, lề 10%. Đo (eval_cluster.py): agglomerative average-linkage trên cosine, cắt theo ngưỡng chọn trên val; trung bình
+theo bộ; bỏ Other; chỉ nhân vật có >=2 box. Xáo nhãn ngẫu nhiên cho BCubed F1 ~0,20.
+| Test, 11 bộ | Face | Body |
+|---|---|---|
+| DINOv2 thô, box GT: BCubed F1 / ARI / R@1 / số cụm dự đoán (thật) | 0,395 / 0,131 / 0,715 / 104 (26) | 0,336 / 0,030 / 0,467 / 75 (28) |
+| **Fine-tune, box GT**: BCubed F1 / ARI / R@1 / mAP / cụm | **0,636** / 0,554 / 0,842 / 0,652 / 37 (26) | **0,549** / 0,430 / 0,766 / 0,542 / 39 (28) |
+| Fine-tune, box DETECTOR, cách A (chỉ box ghép được GT) BCubed F1 / ARI | 0,658 / 0,573 | 0,565 / 0,493 |
+| Fine-tune, box DETECTOR, **cách B (end-to-end)** BCubed F1 / pairwise F1 / ARI | **0,590** / 0,533 / 0,472 | **0,526** / 0,484 / 0,421 |
+| Recall / precision detector (mặt/thân hợp lệ, IoU>=0,5) | 86,0% / ~88% | 89,8% / ~86% |
+Cách A cô lập chất lượng embedding trên crop của detector (bỏ mặt bị sót nên mẫu dễ hơn, đừng đọc là "detector tốt hơn box GT").
+Cách B tính box thừa (nhãn rác riêng lẻ) và mặt sót (cụm lẻ): hơi bi quan, "số cụm" của B bị thổi phồng bởi cụm lẻ.
+Face fine-tune theo bộ (box detector, B): tốt nhất GinNoChimera 0,73, LoveHina 0,65, MiraiSan 0,72; tệ nhất WarewareHaOniDearu 0,44,
+Hamlet 0,50, HeiseiJimen 0,47; Akuhamu 0,49 vì detector chỉ bắt 61% mặt (BCubed F1 0,62 với box GT). Vẫn CHIA THỪA cụm (~1,4x
+số nhân vật thật ở box GT), riêng MiraiSan gộp thừa => ngưỡng cố định không tối ưu cho mọi bộ.
+Trọng số lưu local: kết quả tái tạo được từ `data/reid/{f_b,b_a}/best.pt` (kiểm tra: face test BCubed F1 0,636 local vs 0,640 Kaggle).
+
+Ghép face+body (`eval_fused.py`, `eval_fused_learned.py`; thực thể = một người trên một trang: mặt + body nhỏ nhất bao nó,
+hoặc mặt/body đứng riêng; khoảng cách = trung bình có trọng số trên modality CẢ HAI cùng có, thiếu modality chung = 1,0).
+Test, box detector, cách B, trung bình 11 bộ (cùng tập thực thể, so công bằng):
+| Cấu hình | BCubed F1 | Pairwise F1 | ARI |
+|---|---|---|---|
+| Chỉ face | **0,593** | 0,464 | 0,386 |
+| Chỉ body | 0,521 | 0,472 | 0,410 |
+| Ghép 0,7/0,3 (đặt tay) | 0,573 | 0,535 | 0,471 |
+| Ưu tiên mặt (D_face nếu cả hai có mặt, else D_body) | 0,543 | 0,481 | 0,426 |
+| MLP học trên val (face+body) | 0,577 | **0,543** | **0,487** |
+| MLP học + cùng-trang/khoảng cách trang | 0,588 | 0,532 | 0,480 |
+KẾT LUẬN: ghép KHÔNG vượt chỉ-face theo BCubed F1 (chênh trung bình so với chỉ-face: -0,020 cho 0,7/0,3, -0,016 cho MLP,
+-0,005 cho MLP+trang; sai số chuẩn ~0,018; tốt hơn ở 3/11, 3/11, 6/11 bộ) nhưng ARI/pairwise F1 cao hơn rõ; ghép giúp ở bộ detector bắt mặt kém (Akuhamu 0,50 -> 0,61). MLP học gần như bằng trọng số đặt tay
+(AUC mức cặp 0,856 vs 0,848; thêm đặc trưng trang +0,002) => trọng số đặt tay đã gần tối ưu. AUC "chỉ face" 0,706 bị kéo thấp vì
+~26% thực thể không có mặt (gán khoảng cách 1,0). BCubed khoan dung với cụm lẻ hơn pairwise/ARI nên hai thước đo bất đồng.
+Khuyến nghị: gom theo MẶT làm chính; dùng ghép 0,7/0,3 nếu muốn bù trang detector không bắt mặt.
+
+Chương thật: `run_characters.py <ảnh|thư mục|.cbz> [--mode face|fused] [--thr] [--sweep ...] [--draw]`. Ngưỡng mặc định (face 0,4;
+fused 0,5) chọn trên val Manga109, KHÔNG kiểm chứng được trên truyện thật (không nhãn): dùng `--sweep`, xem `sheet_XX.jpg` để
+phát hiện gộp nhầm/tách thừa. Mỗi thực thể trong characters.json có page, face_box, body_box, cluster (1-based, null = chưa gán).
+
 ### Chạy trên Kaggle
 - Dữ liệu tải từ HF gated `hal-utokyo/Manga109` (cần token Read trong Secrets `HF_TOKEN`),
   convert ngay trên máy Kaggle; không upload dataset. `data.yaml` phải trỏ path Linux.
@@ -152,6 +216,13 @@ Weights: `weights/best.pt` (local, không commit); đường cong/ma trận nh�
   đổi đuôi (.csv->.txt); `.pt` có thể bị đổi thành .zip (chỉ cần đổi đuôi lại, đừng giải nén).
 - Output notebook cũ gắn làm input ở `/kaggle/input/notebooks/<user>/<notebook>/`
   (chứa `yolo/` và `out/runs/detect/runs/<name>/weights/best.pt`).
+- `kaggle_reid.ipynb`: Run All một lần (tải Manga109 ~4,1 GB, clone repo, tự chọn cấu hình face theo val, test một lần,
+  rồi body); hàm `sh()` dừng notebook khi lệnh lỗi. Cell tải/giải nén chạy lại được. Notebook clone từ GitHub nên script
+  phải đã PUSH trước. Crop cache vào `/kaggle/temp` nếu có, không thì `/kaggle/working` (giới hạn 20 GB; crop body train ~9 GB,
+  notebook xoá cache face trước khi làm body). Output tải về: `.pt` và `.npz` bị đổi đuôi thành `.zip` -> đổi tên lại, đừng
+  giải nén; đừng tải cả thư mục Output (có `crops/` nhiều GB). `transformers` Kaggle cũ đặt tên khoá attention khác bản local
+  (`attention.attention.query` vs `attention.q_proj`): `train_reid.load_ckpt` đã đổi tên khoá.
+- Smoke test trong notebook với ít bộ cần `P <= số nhân vật` và tổng bước >= 20 (đã sửa trong `train_reid.py`).
 
 ## Phát hiện từ dữ liệu thật
 - Mỗi "trang" Manga109 là TRANG ĐÔI (ảnh ~1654x1170, hai trang liền nhau, đọc phải->trái).
@@ -161,6 +232,9 @@ Weights: `weights/best.pt` (local, không commit); đường cong/ma trận nh�
   giữa, đọc hết trang trước rồi mới sang trang sau; nếu có panel tràn qua rãnh thì không tách.
   Khi gán nhãn/đo Kendall tau cần quyết định tính trên trang đôi hay từng trang đơn.
 - Lớp: 0 frame, 1 text, 2 face, 3 body. `text` = bbox CHỮ, không phải đường viền bong bóng.
+- `<face>`/`<body>` có `character` (id nhân vật theo bộ), `<text>` không có nhãn người nói: GT speaker phải lấy từ nguồn
+  khác (Manga109Dialog, github.com/liyingxuan1012/Manga109Dialog, ~132.692 cặp thoại-người nói; giấy phép và việc khớp id với
+  annotations 2026 CHƯA kiểm tra) hoặc tự gán nhãn.
 
 ## Quy ước / lưu ý
 - Luôn split theo bộ truyện, không theo trang.
@@ -175,3 +249,7 @@ Weights: `weights/best.pt` (local, không commit); đường cong/ma trận nh�
 4. Reading order: đo Kendall tau / % trang đúng hoàn toàn; xử lý panel chéo.
 5. Mask bong bóng bằng SAM (box prompt từ text box), lọc tay vài chục trang để đo IoU.
 6. Phân tích lỗi (~30 trang sai nhiều nhất) + README có bảng kết quả + demo HF Spaces.
+7. (Mới) Speaker attribution: khảo sát nhãn (Manga109Dialog hay tự gán ~30-50 trang test), baseline "nhân vật gần nhất trong
+   cùng panel", đo accuracy với box GT/dự đoán, rồi nối vào `export_koma.py` (gợi ý "nhân vật N" cho từng thoại).
+8. (Mới) Re-ID: chưa đo trên truyện thật có nhãn; chưa thử ngưỡng thích nghi theo bộ (ngưỡng cố định chia thừa/gộp thừa tuỳ bộ);
+   chưa làm rõ lệch số face train (91.321 vs 93.698).
