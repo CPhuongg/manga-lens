@@ -147,6 +147,22 @@ def test_split_by_title():
     assert len(s["test"]) == 11 and len(s["val"]) == 11
 
 
+def test_speaker_baselines():
+    from src.speaker import entities_from_boxes, features, nearest_any, nearest_in_panel
+    panels = [[0, 0, 500, 500], [500, 0, 1000, 500]]
+    bodies = [[300, 100, 400, 400], [600, 100, 700, 400]]  # body 0 trong panel 0, body 1 trong panel 1
+    faces = [[320, 110, 380, 170], [900, 10, 950, 60]]     # mặt 1 không nằm trong body nào -> thực thể riêng
+    ents = entities_from_boxes(bodies, faces)
+    assert len(ents) == 3 and ents[0]["face"] == faces[0] and ents[1]["face"] is None
+    texts = [[460, 200, 490, 260]]  # sát mép panel 0; body 1 (panel 1) cách 110px, body 0 cách 60px
+    F, D, tp, ctx = features(panels, texts, ents, (1000, 500))
+    assert F.shape[:2] == (1, 3) and tp == [0] and ctx == {"prev": [-1], "next": [-1]}
+    assert nearest_any(F, D)[0] == 0 and nearest_in_panel(F, D)[0] == 0
+    texts2 = [[505, 200, 530, 260]]  # panel 1: nearest_in_panel chọn thực thể trong panel 1 dù body 0 cũng gần
+    F, D, tp, _ = features(panels, texts2, ents, (1000, 500))
+    assert tp == [1] and nearest_in_panel(F, D)[0] in (1, 2)
+
+
 if __name__ == "__main__":
     for n, f in list(globals().items()):
         if n.startswith("test_"):

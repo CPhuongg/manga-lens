@@ -3,7 +3,7 @@
 Dự án cá nhân (luyện CV, không gắn với nghiên cứu): phân tích 1 trang manga -> detect
 panel/text/face/body, sắp thứ tự đọc (phải->trái), OCR thoại. Phạm vi ban đầu là **mức Mid**; đã MỞ RỘNG sang
 **nhận dạng nhân vật** (gom mặt/thân theo nhân vật trong một bộ truyện, xem mục "Nhận dạng nhân vật").
-Speaker attribution (gán thoại cho nhân vật nói) CHƯA làm.
+Speaker attribution (gán thoại cho nhân vật nói) đã làm mức hình học (xem mục "Speaker attribution"); chưa dùng hướng đuôi bóng thoại.
 
 ## Cấu trúc
 - `scripts/convert_manga109.py` — XML Manga109 -> YOLO, split theo BỘ TRUYỆN (seed 0, 80/10/10), ghi `data/yolo/data.yaml` + `{split}_titles.txt`
@@ -32,6 +32,13 @@ Speaker attribution (gán thoại cho nhân vật nói) CHƯA làm.
   - `scripts/eval_cluster_pred.py` — như trên nhưng với box face/body do DETECTOR dự đoán (cache `data/pred/`); cách đo A/B
   - `scripts/eval_fused.py`, `scripts/eval_fused_learned.py` — ghép face+body (khoảng cách đặt tay / MLP học trên val)
   - `scripts/run_characters.py` — chạy trên chương thật (ảnh/thư mục/.cbz) -> `out/<tên>/characters/` (characters.txt/json, sheet_XX.jpg, `--draw`)
+- Speaker attribution (gán thoại cho thực thể/nhân vật nói):
+  - `data/dialog/` — Manga109Dialog (XML, CC BY 4.0, tải bằng sparse-clone `manga109/public-annotations`; KHÔNG commit)
+  - `scripts/build_speaker_labels.py` — ánh xạ nhãn Dialog (annotations 2021) sang annotations 2026 -> `data/speaker_labels.json`
+  - `src/speaker.py` — thực thể (body + mặt), đặc trưng cặp (text, ứng viên), baseline nearest, `SpeakerScorer` (MLP listwise), `attribute()`
+  - `scripts/eval_speaker.py` (box GT, `--model`, `--by-title`, bảng độ tin cậy), `scripts/eval_speaker_pred.py` (box detector, cách A/B),
+    `scripts/train_speaker.py` (`--context` = giai đoạn 2 thử nghiệm, KHÔNG dùng), `scripts/train_speaker_vis.py` (thử nghiệm CNN hướng, kết quả âm tính) -> `data/speaker/model.pt` (gitignored)
+  - `export_koma.py --characters out/<tên>/characters/characters.json` ghi `[NVk]` vào ghi chú (`note`) của từng ô
 - `app.py` — demo Gradio (mặc định `weights/best.pt`, chỉnh conf/imgsz, bật/tắt OCR, không lưu ảnh)
 - `space/` + `scripts/make_space.py` — đóng gói Hugging Face Space vào `build/space/` (gitignored); đẩy lên bằng
   `hf upload <user>/manga-lens build/space . --repo-type space`. CPU mô phỏng (máy local): detect 3.7 s (imgsz 1024)
@@ -39,7 +46,7 @@ Speaker attribution (gán thoại cho nhân vật nói) CHƯA làm.
   trọng số huấn luyện từ nó không (chưa xác nhận); demo không kèm ví dụ ảnh truyện.
 - `src/reading_order.py` — XY-cut đệ quy RTL + gán text vào panel (+ `kendall_tau`)
 - `src/ocr.py`, `src/pipeline.py`, `app.py` — OCR, pipeline end-to-end, demo Gradio
-- `tests/test_basic.py` — chạy `python tests/test_basic.py` (không cần dữ liệu), hiện 9/9 pass
+- `tests/test_basic.py` — chạy `python tests/test_basic.py` (không cần dữ liệu), hiện 14/14 pass
 
 ## Môi trường (Windows)
 - venv ở `.venv/` (Python 3.13); chạy bằng `.venv/Scripts/python.exe`. torch hiện là bản CUDA (2.14.1+cu130, cuda=True), gradio 6.30.
@@ -69,7 +76,7 @@ Speaker attribution (gán thoại cho nhân vật nói) CHƯA làm.
   vào panel gần nhất như thoại đầu tiên (chưa tách loại).
 - ĐÃ chạy thật (Kaggle + local): re-ID nhân vật (xem mục "Nhận dạng nhân vật") và `run_characters.py` trên chương thật (chỉ
   nhận xét sơ bộ "tạm ổn"; không có nhãn nên chưa đo).
-- CHƯA làm: mask SAM, bảng so sánh model (yolo11n/m), đo end-to-end gộp thứ tự + OCR trên toàn bộ trang, speaker attribution.
+- CHƯA làm: mask SAM, bảng so sánh model (yolo11n/m), đo end-to-end gộp thứ tự + OCR trên toàn bộ trang, speaker attribution dùng thị giác (đuôi bóng thoại).
 
 ### Kết quả OCR (manga-ocr, 200 trang test ngẫu nhiên, seed 0, 2987 text box GT)
 `normalize()` mặc định bỏ khác biệt chỉ do dấu câu (NFKC, gộp dãy `…・･．.`, `〜`->`~`); manga-ocr
@@ -209,6 +216,37 @@ Chương thật: `run_characters.py <ảnh|thư mục|.cbz> [--mode face|fused] 
 fused 0,5) chọn trên val Manga109, KHÔNG kiểm chứng được trên truyện thật (không nhãn): dùng `--sweep`, xem `sheet_XX.jpg` để
 phát hiện gộp nhầm/tách thừa. Mỗi thực thể trong characters.json có page, face_box, body_box, cluster (1-based, null = chưa gán).
 
+### Speaker attribution (gán thoại cho người nói)
+Nhãn: Manga109Dialog (ICME 2024, CC BY 4.0), 132.692 cặp (text_id, speaker_id) trên 109 bộ. Đã kiểm tra: dựa trên annotations
+BẢN 2021.12.30 (147.887 text đúng bằng số text trong bài báo); `speaker_id` LUÔN là id <body> cùng trang (132.692/132.692). Id
+face/body/frame giống hệt ở bản 2026 nhưng id <text> bị đánh số lại hoàn toàn (chỉ 43/147.887 trùng) -> ghép text 2021->2026 theo
+IoU>=0,5 từng trang (khớp 1-1): 85,9% text khớp ở IoU 0,5 (94,7% ở 0,3). Trong cặp Dialog: train 14,5% / val 15,9% / test 11,6% bị loại vì
+không ghép được text (nghĩa là mẫu đo lệch về text KHÔNG bị đổi box). 1.073 text có nhiều người nói (0,5-0,9%); lời dẫn truyện/tiêu đề/
+người nói ngoài trang KHÔNG có nhãn -> "không có cặp" nghĩa là "không gán nhãn", không phải "không người nói". Phủ cả 11 bộ test (14.215 cặp).
+Thực thể ứng viên = body (kèm mặt nằm trong) hoặc mặt đứng riêng; đúng ở mức BOX = chọn một body người nói của Dialog; mức NHÂN VẬT =
+trùng id nhân vật (bỏ nhóm Other). Mô hình: MLP 2 lớp ẩn 128 trên 28 đặc trưng hình học (khoảng cách, cùng panel, hạng khoảng cách, kích thước,
+vị trí tương đối, thứ tự đọc, mặt...), softmax trong top-20 ứng viên, train 87 bộ (89.118 thoại), chọn epoch trên val; không dùng ảnh.
+| Đúng body / nhân vật (thoại có nhãn) | Val 11 bộ | TEST 11 bộ (chạm 1 lần) |
+|---|---|---|
+| Box GT: nearest toàn trang | 0,645 / 0,704 | (không chạy) |
+| Box GT: nearest cùng panel | 0,699 / 0,726 | 0,792 / 0,818 |
+| **Box GT: mô hình học** | **0,736** / 0,751 | **0,833** / 0,847 |
+| Trần "người nói nằm cùng panel với text" | 0,825 | 0,896 |
+| Box detector, nearest cùng panel, B (sót = sai) | 0,620 / 0,648 | 0,728 / 0,754 |
+| **Box detector, mô hình học, B** | (không chạy) | **0,764** / 0,780 (A: 0,774 / 0,790) |
+Detector bắt 98,7% thoại có nhãn (test). Test dễ hơn val (baseline 0,79 vs 0,70) nên đừng so tuyệt đối giữa hai cột; chênh mô hình-baseline:
++3,7 (val), +4,1 (test) điểm. Theo bộ (test, mô hình): 0,77 (ToutaMairimasu) -> 0,90 (Akuhamu); chỉ 11 bộ.
+Lỗi còn lại (val/test): người nói NGOÀI panel của text 13,2%/6,8% (mô hình hầu như không bao giờ chọn ngoài panel); trong panel mà chọn nhầm
+người khác 13,1%/9,9% (trung bình ~1,9 ứng viên cùng panel) -> cần tín hiệu thị giác (đuôi bóng thoại, hướng nhìn), hình học đã bão hoà.
+Thử thị giác (`scripts/train_speaker_vis.py`, CNN nhỏ nhìn vùng 2,5x quanh box thoại dự đoán hướng tới người nói, train 2-fold theo bộ, thêm 4 đặc trưng
+hướng vào MLP): hướng đúng trong 45° ở 76,1% thoại val (cos trung bình 0,745) nhưng val đúng body 0,739 so với 0,736 -> KHÔNG thêm thông tin ngoài
+hình học (chưa chạy test, không đưa vào pipeline). Có thể CNN chỉ học lại ưu tiên hình học; thử đuôi bóng thoại thật cần mask bong bóng (SAM) hoặc nhãn hướng.
+Thử giai đoạn 2 (thêm xác suất của câu thoại liền trước/sau theo thứ tự đọc): val 0,736 -> 0,740, nằm trong sai số -> không dùng.
+Độ tin cậy (val, mô hình): p>=0,5 phủ 87,8% chính xác 0,781; p>=0,6 phủ 75,5% / 0,816; p>=0,7 phủ 63,1% / 0,844; p>=0,9 phủ 23,8% / 0,913.
+`export_koma.py --speaker-min-prob` mặc định 0,6. Ghép với re-ID (thoại -> thực thể -> cụm `[NVk]`): thử trên 16 trang LoveHina_vol01 (test, 1 bộ):
+gợi ý phủ 70,3% thoại có nhãn, đúng nhân vật 0,830 trên phần có gợi ý (ánh xạ cụm->nhân vật GT bằng đa số, hơi lạc quan; một nhân vật bị tách
+thành 2 cụm). MẪU RẤT NHỎ, chưa đo trên cả 11 bộ. Chương thật (18+) chưa chạy gợi ý người nói.
+
 ### Chạy trên Kaggle
 - Dữ liệu tải từ HF gated `hal-utokyo/Manga109` (cần token Read trong Secrets `HF_TOKEN`),
   convert ngay trên máy Kaggle; không upload dataset. `data.yaml` phải trỏ path Linux.
@@ -249,7 +287,7 @@ phát hiện gộp nhầm/tách thừa. Mỗi thực thể trong characters.json
 4. Reading order: đo Kendall tau / % trang đúng hoàn toàn; xử lý panel chéo.
 5. Mask bong bóng bằng SAM (box prompt từ text box), lọc tay vài chục trang để đo IoU.
 6. Phân tích lỗi (~30 trang sai nhiều nhất) + README có bảng kết quả + demo HF Spaces.
-7. (Mới) Speaker attribution: khảo sát nhãn (Manga109Dialog hay tự gán ~30-50 trang test), baseline "nhân vật gần nhất trong
+7. (Một phần xong, xem mục "Speaker attribution"; còn: đuôi bóng thoại/thị giác, đo end-to-end với re-ID trên 11 bộ, tự gán ~30 trang kiểm tra nhãn Dialog) Speaker attribution: khảo sát nhãn (Manga109Dialog hay tự gán ~30-50 trang test), baseline "nhân vật gần nhất trong
    cùng panel", đo accuracy với box GT/dự đoán, rồi nối vào `export_koma.py` (gợi ý "nhân vật N" cho từng thoại).
 8. (Mới) Re-ID: chưa đo trên truyện thật có nhãn; chưa thử ngưỡng thích nghi theo bộ (ngưỡng cố định chia thừa/gộp thừa tuỳ bộ);
    chưa làm rõ lệch số face train (91.321 vs 93.698).

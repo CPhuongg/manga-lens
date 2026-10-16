@@ -25,7 +25,9 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.ocr import iou  # noqa: E402
 from src.pipeline import MangaPipeline  # noqa: E402
+from src.speaker import SpeakerScorer, attribute  # noqa: E402
 
 # Giống Koma: các đuôi ảnh nó nhận + sắp theo số trong tên file ("1, 2, 10")
 IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"}
@@ -45,6 +47,13 @@ ap.add_argument("--order", choices=["panel", "direct"], default="panel",
 ap.add_argument("--conf", type=float, default=0.25)
 ap.add_argument("--imgsz", type=int, default=1024)
 ap.add_argument("--device", default=None)
+ap.add_argument("--characters", type=Path, default=None,
+                help="characters.json do run_characters.py tạo cho CÙNG thư mục ảnh: bật gợi ý người nói "
+                     "('[NV3]' = nhân vật 3) ghi vào ghi chú của từng ô")
+ap.add_argument("--speaker-model", type=Path, default=Path("data/speaker/model.pt"))
+ap.add_argument("--speaker-min-prob", type=float, default=0.6,
+                help="chỉ gợi ý khi xác suất của mô hình >= mức này (ô còn lại để trống)")
+ap.add_argument("--chars-max-side", type=int, default=2400, help="--max-side đã dùng khi chạy run_characters")
 ap.add_argument("--preview", action="store_true", help="lưu ảnh vẽ ô cạnh file json để xem nhanh")
 a = ap.parse_args()
 
@@ -83,9 +92,30 @@ out_dir = a.out.parent if a.out else Path("out") / safe_name(name)
 out_path = a.out or out_dir / f"{safe_name(name)}.mtp.json"
 out_dir.mkdir(parents=True, exist_ok=True)
 
+chars_by_page, scorer = {}, None
+if a.characters:
+    cj = json.loads(a.characters.read_text(encoding="utf-8"))
+    for it in cj["instances"]:
+        chars_by_page.setdefault(it["page_name"], []).append(it)
+    scorer = SpeakerScorer.load(a.speaker_model)
+
+
+def cluster_of(ent, insts, scale):
+    """Cụm nhân vật của một thực thể (khớp theo IoU>=0.5 với thực thể của run_characters); None nếu không có."""
+    best, c = 0.5, None
+    for it in insts:
+        for key, box in (("body_box", ent["box"]), ("face_box", ent["face"])):
+            if box is None or it[key] is None:
+                continue
+            v = iou(box, [x * scale for x in it[key]])
+            if v >= best and it["cluster"] is not None:
+                best, c = v, it["cluster"]
+    return c
+
+
 pipe = MangaPipeline(a.weights, conf=a.conf, imgsz=a.imgsz, device=a.device, ocr=not a.no_ocr)
 now_ms = int(time.time() * 1000)
-pages, n_boxes, t0 = [], 0, time.time()
+pages, n_boxes, n_hint, t0 = [], 0, 0, time.time()
 for i, f in enumerate(files, 1):
     try:
         # exif_transpose: trình duyệt hiển thị ảnh theo EXIF, nên kích thước/toạ độ phải theo hướng đó
@@ -97,6 +127,16 @@ for i, f in enumerate(files, 1):
         continue
     res = pipe.run(img, rtl=not a.ltr, order=a.order)
     W, H = img.size
+    hint = {}  # (box text) -> "[NVk]"
+    if scorer and f.stem in chars_by_page:
+        ents, attr = attribute(res["detections"], img.size, scorer)
+        scale = max(W, H) / a.chars_max_side if max(W, H) > a.chars_max_side else 1.0
+        for d, (ei, prob) in zip(res["detections"]["text"], attr):
+            if ei is not None and prob >= a.speaker_min_prob:
+                c = cluster_of(ents[ei], chars_by_page[f.stem], scale)
+                if c is not None:
+                    hint[tuple(d["box"])] = f"[NV{c}]"
+    n_hint += len(hint)
     boxes = []
     for p in res["reading"]:
         for t in p["texts"]:  # đã theo đúng thứ tự đọc của cả trang (t["order"] tăng dần)
@@ -106,7 +146,7 @@ for i, f in enumerate(files, 1):
             # Koma lưu toạ độ ô CHUẨN HOÁ 0-1 theo kích thước trang (boxStyle: left = x * 100%), không phải px
             boxes.append({"id": uid("bx"), "x": round(x1 / W, 6), "y": round(y1 / H, 6),
                           "w": round((x2 - x1) / W, 6), "h": round((y2 - y1) / H, 6),
-                          "jp": t["text"], "tr": {DEFAULT_TRACK: {"vi": "", "note": ""}}})
+                          "jp": t["text"], "tr": {DEFAULT_TRACK: {"vi": "", "note": hint.get(tuple(t["box"]), "")}}})
     n_boxes += len(boxes)
     pages.append({"id": uid("pg"), "fileName": f.name, "relPath": f"{a.folder.name}/{f.name}",
                   "w": W, "h": H, "boxes": boxes})
