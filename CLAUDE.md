@@ -37,7 +37,7 @@ Speaker attribution (gán thoại cho nhân vật nói) đã làm mức hình h�
   - `scripts/build_speaker_labels.py` — ánh xạ nhãn Dialog (annotations 2021) sang annotations 2026 -> `data/speaker_labels.json`
   - `src/speaker.py` — thực thể (body + mặt), đặc trưng cặp (text, ứng viên), baseline nearest, `SpeakerScorer` (MLP listwise), `attribute()`
   - `scripts/eval_speaker.py` (box GT, `--model`, `--by-title`, bảng độ tin cậy), `scripts/eval_speaker_pred.py` (box detector, cách A/B),
-    `scripts/train_speaker.py` (`--context` = giai đoạn 2 thử nghiệm, KHÔNG dùng), `scripts/train_speaker_vis.py` (thử nghiệm CNN hướng, kết quả âm tính) -> `data/speaker/model.pt` (gitignored)
+    `scripts/train_speaker.py` (`--context` = giai đoạn 2 thử nghiệm, KHÔNG dùng), `scripts/train_speaker_vis.py` (thử nghiệm CNN hướng, kết quả âm tính), `src/bubble.py` + `scripts/sam_tails.py` + `scripts/train_speaker_tail.py` (đuôi bong bóng từ SAM, kết quả âm tính) -> `data/speaker/model.pt` (gitignored)
   - `export_koma.py --characters out/<tên>/characters/characters.json` ghi `[NVk]` vào ghi chú (`note`) của từng ô
 - `app.py` — demo Gradio (mặc định `weights/best.pt`, chỉnh conf/imgsz, bật/tắt OCR, không lưu ảnh)
 - `space/` + `scripts/make_space.py` — đóng gói Hugging Face Space vào `build/space/` (gitignored); đẩy lên bằng
@@ -76,7 +76,7 @@ Speaker attribution (gán thoại cho nhân vật nói) đã làm mức hình h�
   vào panel gần nhất như thoại đầu tiên (chưa tách loại).
 - ĐÃ chạy thật (Kaggle + local): re-ID nhân vật (xem mục "Nhận dạng nhân vật") và `run_characters.py` trên chương thật (chỉ
   nhận xét sơ bộ "tạm ổn"; không có nhãn nên chưa đo).
-- CHƯA làm: mask SAM, bảng so sánh model (yolo11n/m), đo end-to-end gộp thứ tự + OCR trên toàn bộ trang, speaker attribution dùng thị giác (đuôi bóng thoại).
+- CHƯA làm: mask SAM, bảng so sánh model (yolo11n/m), đo end-to-end gộp thứ tự + OCR trên toàn bộ trang, speaker attribution dùng thị giác (hai thử nghiệm CNN hướng và đuôi SAM đều không có ích).
 
 ### Kết quả OCR (manga-ocr, 200 trang test ngẫu nhiên, seed 0, 2987 text box GT)
 `normalize()` mặc định bỏ khác biệt chỉ do dấu câu (NFKC, gộp dãy `…・･．.`, `〜`->`~`); manga-ocr
@@ -241,6 +241,13 @@ người khác 13,1%/9,9% (trung bình ~1,9 ứng viên cùng panel) -> cần t�
 Thử thị giác (`scripts/train_speaker_vis.py`, CNN nhỏ nhìn vùng 2,5x quanh box thoại dự đoán hướng tới người nói, train 2-fold theo bộ, thêm 4 đặc trưng
 hướng vào MLP): hướng đúng trong 45° ở 76,1% thoại val (cos trung bình 0,745) nhưng val đúng body 0,739 so với 0,736 -> KHÔNG thêm thông tin ngoài
 hình học (chưa chạy test, không đưa vào pipeline). Có thể CNN chỉ học lại ưu tiên hình học; thử đuôi bóng thoại thật cần mask bong bóng (SAM) hoặc nhãn hướng.
+Thử đuôi bong bóng thật (mobile_sam, prompt = box text nới 3x -> mask -> trừ phép mở hình thái -> mảnh lồi lớn nhất = đuôi; `src/bubble.py`,
+`scripts/sam_tails.py`, `scripts/train_speaker_tail.py`; trọng số `weights/mobile_sam.pt` 40,7 MB tải từ ultralytics/assets, gitignored): chạy SAM ~0,6-0,9 s/trang;
+val 11.013 thoại, train chỉ 2.500 trang ngẫu nhiên (28.471 thoại, vì SAM chậm). Cùng tập train đó: hình học thuần 0,730 so với hình học + đuôi 0,731 val
+(đúng body) -> KHÔNG có ích (chưa chạy test, không đưa vào pipeline; hình học train đủ 87 bộ là 0,736). Chẩn đoán: 61,5% thoại bị coi là "có đuôi"
+(nhiều đuôi giả do mask tràn/bong bóng không viền), cos giữa hướng đuôi và hướng tới người nói trung bình 0,28 (dương ở 69%, >0,7 ở 36,7%; ngẫu nhiên 50% / 25%),
+và ứng viên gần ĐẦU ĐUÔI nhất đúng 0,550 so với 0,646 của ứng viên gần box text nhất (trên các thoại có đuôi) -> mask SAM từ box text quá nhiễu để lấy đuôi.
+Muốn khá hơn cần nhãn bong bóng/đuôi thật hoặc mô hình riêng; không nên tiếp tục theo hướng này với cách trích đuôi hiện tại.
 Thử giai đoạn 2 (thêm xác suất của câu thoại liền trước/sau theo thứ tự đọc): val 0,736 -> 0,740, nằm trong sai số -> không dùng.
 Độ tin cậy (val, mô hình): p>=0,5 phủ 87,8% chính xác 0,781; p>=0,6 phủ 75,5% / 0,816; p>=0,7 phủ 63,1% / 0,844; p>=0,9 phủ 23,8% / 0,913.
 `export_koma.py --speaker-min-prob` mặc định 0,6. Ghép với re-ID (thoại -> thực thể -> cụm `[NVk]`): thử trên 16 trang LoveHina_vol01 (test, 1 bộ):

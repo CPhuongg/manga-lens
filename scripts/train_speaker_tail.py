@@ -95,13 +95,13 @@ def main():
               a.out + ".control", N_FEAT)
     ctl = Sliced(SpeakerScorer(ck0), N_FEAT)
     report(evaluate(va, nearest_in_panel), "VAL baseline nearest cùng panel")
-    report(evaluate(va, SpeakerScorer.load("data/speaker/model.pt").predict), "VAL hình học thuần, train ĐỦ 87 bộ (model.pt)")
+    report(evaluate(va, Sliced(SpeakerScorer.load("data/speaker/model.pt"), N_FEAT).predict), "VAL hình học thuần, train ĐỦ 87 bộ (model.pt)")
     report(evaluate(va, ctl.predict), "VAL hình học thuần, cùng tập trang train với mô hình đuôi")
     report(evaluate(va, sc.predict), "VAL hình học + đuôi bong bóng")
     if a.test:
         te = extend(list(load_pages(a.labels, "test")), "data/speaker/tail_test.npz")
         report(evaluate(te, nearest_in_panel), "TEST baseline nearest cùng panel")
-        report(evaluate(te, SpeakerScorer.load("data/speaker/model.pt").predict), "TEST hình học thuần, train đủ")
+        report(evaluate(te, Sliced(SpeakerScorer.load("data/speaker/model.pt"), N_FEAT).predict), "TEST hình học thuần, train đủ")
         report(evaluate(te, ctl.predict), "TEST hình học thuần, cùng tập trang train")
         report(evaluate(te, sc.predict), "TEST hình học + đuôi bong bóng")
 
