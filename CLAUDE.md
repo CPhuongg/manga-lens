@@ -22,6 +22,14 @@ Speaker attribution (gán thoại cho nhân vật nói) đã làm mức hình h�
   model khoanh ô thoại + điền chữ Nhật (OCR) + đánh số theo thứ tự đọc. Dùng: Koma -> Nhập .json -> Gắn lại ảnh.
   Koma lưu ô dạng CHUẨN HOÁ 0-1 (x,y,w,h theo kích thước trang), không phải px; chỉ dùng cho chương MỚI ("Ghi đè" của
   Koma xoá bản dịch cũ). Đã kiểm tra bằng cách nhập vào Koma chạy ở cổng riêng 8790 (kho IndexedDB tách theo cổng).
+  (Cách cũ, chạy tay; giờ Koma ở `D:/MINI APP/koma` gọi thẳng `koma_lens.py` bên dưới.)
+- `scripts/koma_lens.py` — worker mà `serve.py` của Koma chạy (bằng `.venv` này, cwd = repo, không cửa sổ console) khi bấm
+  "Phân tích bằng manga-lens": nhận thư mục job (`manifest.json` + ảnh, do Koma tạo trong `%TEMP%/koma-lens-*`), làm cả
+  bộ truyện một lượt: detect, thứ tự đọc, OCR, gom nhân vật re-ID XUYÊN chương (như run_characters, mặc định face 0,4),
+  gợi ý người nói (`attribute`, min-prob 0,6) -> `result.json`; tiến độ in stdout dạng `@@{json}`. Trang có `boxes` = giữ ô
+  của người dùng (đúng thứ tự), chỉ OCR ô `ocr: true` + gán người nói. Mỗi nhân vật trả tối đa 6 mặt JPEG 80px (data URL,
+  Koma lưu trong chương). ĐỔI định dạng manifest/result thì phải sửa cả `koma.html` (khối "6b. manga-lens") + `serve.py`.
+  Đã chạy thật: 8 trang LoveHina_vol01 (GPU) ~38 s, 160 ô, 5 nhân vật; và qua Koma (cổng 8790) cả luồng huỷ / F5 nối lại.
 - Nhận dạng nhân vật (re-ID):
   - `scripts/extract_characters.py` — giữ thuộc tính `character` của face/body trong XML -> `data/characters.json` (kèm split theo bộ)
   - `scripts/train_reid.py` — fine-tune DINOv2-small bằng SupCon (face hoặc body); cache crop ở `data/crops/`;
