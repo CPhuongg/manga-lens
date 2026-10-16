@@ -271,8 +271,8 @@ thành 2 cụm). MẪU RẤT NHỎ, chưa đo trên cả 11 bộ. Chương thậ
   Khi gán nhãn/đo Kendall tau cần quyết định tính trên trang đôi hay từng trang đơn.
 - Lớp: 0 frame, 1 text, 2 face, 3 body. `text` = bbox CHỮ, không phải đường viền bong bóng.
 - `<face>`/`<body>` có `character` (id nhân vật theo bộ), `<text>` không có nhãn người nói: GT speaker phải lấy từ nguồn
-  khác (Manga109Dialog, github.com/liyingxuan1012/Manga109Dialog, ~132.692 cặp thoại-người nói; giấy phép và việc khớp id với
-  annotations 2026 CHƯA kiểm tra) hoặc tự gán nhãn.
+  khác: Manga109Dialog (~132.692 cặp thoại-người nói, CC BY 4.0; dựa trên annotations 2021, id text phải ghép lại sang 2026 bằng IoU,
+  xem mục "Speaker attribution") hoặc tự gán nhãn.
 
 ## Quy ước / lưu ý
 - Luôn split theo bộ truyện, không theo trang.
