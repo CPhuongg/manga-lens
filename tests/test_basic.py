@@ -1,6 +1,8 @@
 """Chạy: python tests/test_basic.py   (không cần Manga109 hay GPU)"""
 import sys
 import tempfile
+
+import numpy as np
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -161,6 +163,19 @@ def test_speaker_baselines():
     texts2 = [[505, 200, 530, 260]]  # panel 1: nearest_in_panel chọn thực thể trong panel 1 dù body 0 cũng gần
     F, D, tp, _ = features(panels, texts2, ents, (1000, 500))
     assert tp == [1] and nearest_in_panel(F, D)[0] in (1, 2)
+
+
+def test_bubble_tail():
+    import cv2
+    from src.bubble import tail_info
+    m = np.zeros((400, 400), np.uint8)
+    cv2.ellipse(m, (200, 150), (90, 70), 0, 0, 360, 1, -1)            # bong bóng
+    cv2.fillPoly(m, [np.array([[170, 205], [215, 205], [230, 330]])], 1)  # đuôi chỉ xuống dưới
+    t = tail_info(m.astype(bool), [150, 110, 250, 190])
+    assert t[0] == 1 and t[4] > 0.8 and abs(t[3]) < 0.5 and t[2] > 280     # đầu đuôi ở phía dưới
+    m2 = np.zeros((400, 400), np.uint8)
+    cv2.ellipse(m2, (200, 150), (90, 70), 0, 0, 360, 1, -1)
+    assert tail_info(m2.astype(bool), [150, 110, 250, 190])[0] == 0         # bong bóng tròn: không đuôi
 
 
 if __name__ == "__main__":
